@@ -418,7 +418,7 @@
     }
 
     _variantOf(i) {
-      return ((i * 2654435761) >>> 0) % 3; // 조각별 고정 '랜덤' 변형
+      return ((i * 2654435761) >>> 0) % 2; // 조각별 고정 '랜덤' 변형
     }
 
     /* 붓결 타일 캔버스(색+브러시+변형별 1회 생성, 전역 캐시).
@@ -429,7 +429,7 @@
       if (!ColoringEngine._tiles) ColoringEngine._tiles = {};
       const key = hex + "|" + kind + "|" + v;
       if (ColoringEngine._tiles[key]) return ColoringEngine._tiles[key];
-      const S = 160;
+      const S = 224;
       const cvs = document.createElement("canvas");
       cvs.width = S; cvs.height = S;
       const g = cvs.getContext("2d");
@@ -574,68 +574,69 @@
           }
         };
 
-        // 2) 굵은 나이프/붓 획: 높이맵(도톰한 단면) + 색 스트릭을 같은 궤적으로
-        for (let k = 0; k < 30; k++) {
+        // 2) 넓적한 나이프 스미어: 평평한 면 + 가장자리에만 부드러운 단차
+        //    (겹치면 실제 물감을 눌러 바른 듯한 계단 경계가 생긴다)
+        for (let k = 0; k < 16; k++) {
           const x = rnd() * S, y = rnd() * S;
-          const ang = baseAng + (rnd() - 0.5) * 0.6;
+          const ang = baseAng + (rnd() - 0.5) * 0.5;
           const dx = Math.cos(ang), dy = Math.sin(ang);
           const px = -dy, py = dx;
-          const len = 34 + rnd() * 78;
-          const bow = (rnd() - 0.5) * 22;
-          const w = 9 + rnd() * 16;
-          const carve = rnd() < 0.22; // 일부는 긁어낸 자국
-          const hA = 0.16 + rnd() * 0.2;
+          const len = 55 + rnd() * 90;
+          const bow = (rnd() - 0.5) * 26;
+          const w = 18 + rnd() * 26;
+          const carve = rnd() < 0.25; // 일부는 긁어낸(낮은) 자국
+          const hA = 0.1 + rnd() * 0.14;
           const ex = x + dx * len, ey = y + dy * len;
-          const m = w + Math.abs(bow) + 4;
+          const m = w + Math.abs(bow) + 8;
           const path = (c) => {
             c.beginPath();
             c.moveTo(x, y);
             c.quadraticCurveTo(x + dx * len * 0.5 + px * bow, y + dy * len * 0.5 + py * bow, ex, ey);
             c.stroke();
           };
-          // 높이: 넓고 연하게 → 좁고 진하게 3겹(둥근 이랑 단면)
+          const tone = carve ? "0,0,0" : "255,255,255";
           wrapOn(hg, (c) => {
-            const tone = carve ? "0,0,0" : "255,255,255";
-            c.strokeStyle = "rgba(" + tone + "," + (hA * 0.35).toFixed(3) + ")";
-            c.lineWidth = w;
-            path(c);
-            c.strokeStyle = "rgba(" + tone + "," + (hA * 0.55).toFixed(3) + ")";
-            c.lineWidth = w * 0.62;
+            // 어깨(가장자리 완만한 경사) → 평평한 본체
+            c.strokeStyle = "rgba(" + tone + "," + (hA * 0.4).toFixed(3) + ")";
+            c.lineWidth = w + 6;
             path(c);
             c.strokeStyle = "rgba(" + tone + "," + hA.toFixed(3) + ")";
-            c.lineWidth = w * 0.3;
+            c.lineWidth = w;
             path(c);
           }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
-          // 색: 물감이 덜 섞인 듯한 밝은/어두운 스트릭
+          // 스미어 안 붓모 자국(아주 은은한 결)
+          const hairs = 2 + (rnd() * 3 | 0);
+          for (let h2 = 0; h2 < hairs; h2++) {
+            const off = (rnd() - 0.5) * w * 0.7;
+            wrapOn(hg, (c) => {
+              c.strokeStyle = "rgba(" + tone + "," + (0.05 + rnd() * 0.05).toFixed(3) + ")";
+              c.lineWidth = 1.2 + rnd() * 2;
+              c.beginPath();
+              c.moveTo(x + px * off, y + py * off);
+              c.quadraticCurveTo(
+                x + dx * len * 0.5 + px * (bow + off), y + dy * len * 0.5 + py * (bow + off),
+                ex + px * off, ey + py * off
+              );
+              c.stroke();
+            }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
+          }
+          // 색: 물감이 덜 섞인 듯한 밝은/어두운 면
           const light = rnd() > 0.5;
-          const cA = 0.05 + rnd() * 0.09;
+          const cA = 0.045 + rnd() * 0.075;
           wrapOn(g, (c) => {
             c.lineCap = "round";
             c.strokeStyle = light ? lightC(cA) : darkC(cA);
-            c.lineWidth = w * 0.8;
+            c.lineWidth = w * 0.9;
             path(c);
           }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
         }
-        // 물감 방울(뭉친 곳)
-        for (let k = 0; k < 8; k++) {
-          const x = rnd() * S, y = rnd() * S, r = 2.5 + rnd() * 5;
-          wrapOn(hg, (c) => {
-            const grad = c.createRadialGradient(x, y, 0, x, y, r);
-            grad.addColorStop(0, "rgba(255,255,255,0.5)");
-            grad.addColorStop(1, "rgba(255,255,255,0)");
-            c.fillStyle = grad;
-            c.beginPath();
-            c.arc(x, y, r, 0, Math.PI * 2);
-            c.fill();
-          }, x - r - 2, y - r - 2, x + r + 2, y + r + 2);
-        }
-        // 캔버스 알갱이(미세 요철)
-        for (let k = 0; k < 240; k++) {
+        // 캔버스 알갱이(아주 미세하게만)
+        for (let k = 0; k < 130; k++) {
           const x = rnd() * S, y = rnd() * S;
           const up = rnd() > 0.5;
           wrapOn(hg, (c) => {
-            c.fillStyle = "rgba(" + (up ? "255,255,255" : "0,0,0") + "," + (0.03 + rnd() * 0.05).toFixed(3) + ")";
-            c.fillRect(x, y, 1.6, 1.6);
+            c.fillStyle = "rgba(" + (up ? "255,255,255" : "0,0,0") + "," + (0.02 + rnd() * 0.03).toFixed(3) + ")";
+            c.fillRect(x, y, 1.4, 1.4);
           }, x, y, x + 2, y + 2);
         }
 
@@ -649,13 +650,13 @@
           for (let x = 0; x < S; x++) {
             const gx = (H(x + 1, y) - H(x - 1, y)) / 255;
             const gy = (H(x, y + 1) - H(x, y - 1)) / 255;
-            const nx = -gx * 2.4, ny = -gy * 2.4;
+            const nx = -gx * 1.9, ny = -gy * 1.9;
             const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
             const rel = (nx * LX + ny * LY + LZ) * inv - LZ; // 굴곡에 의한 증감
-            let shade = 1 + rel * 2.1;
-            if (shade < 0.52) shade = 0.52;
-            else if (shade > 1.55) shade = 1.55;
-            const spec = (rel > 0 ? rel * rel : 0) * 300; // 물감 광택
+            let shade = 1 + rel * 1.6;
+            if (shade < 0.62) shade = 0.62;
+            else if (shade > 1.4) shade = 1.4;
+            const spec = (rel > 0 ? rel * rel : 0) * 190; // 물감 광택
             const p = (y * S + x) * 4;
             let sr = d[p] * shade + spec;
             let sg2 = d[p + 1] * shade + spec;
@@ -684,12 +685,12 @@
         const pat = document.createElementNS(SVGNS, "pattern");
         pat.setAttribute("id", id);
         pat.setAttribute("patternUnits", "userSpaceOnUse");
-        pat.setAttribute("width", "90");
-        pat.setAttribute("height", "90");
+        pat.setAttribute("width", "64");
+        pat.setAttribute("height", "64");
         const img = document.createElementNS(SVGNS, "image");
         img.setAttribute("href", this._brushTile(hex, v, kind).toDataURL("image/png"));
-        img.setAttribute("width", "90");
-        img.setAttribute("height", "90");
+        img.setAttribute("width", "64");
+        img.setAttribute("height", "64");
         pat.appendChild(img);
         this._defs.appendChild(pat);
         this._patterns[id] = true;

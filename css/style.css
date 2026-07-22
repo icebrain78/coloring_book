@@ -174,6 +174,7 @@ button:disabled { opacity: 0.55; }
   width: 100%; height: 100%; max-width: 100vh;
   transform-origin: center center;
   display: flex; align-items: center; justify-content: center;
+  will-change: transform; /* 스크롤/확대를 GPU 레이어로 처리(수천 조각 도안 성능) */
 }
 .c-svg { width: 100%; height: 100%; display: block; }
 
@@ -193,7 +194,10 @@ button:disabled { opacity: 0.55; }
 .region-num {
   fill: #7a828c; font-weight: 700; text-anchor: middle;
   dominant-baseline: central; pointer-events: none; user-select: none;
+  text-rendering: optimizeSpeed;
 }
+/* 사진 도안 축소 상태: 번호 숨김(LOD) — 확대하면 나타남 */
+.c-svg.nums-off .region-num { display: none; }
 
 @keyframes targetPulse {
   0%, 100% { stroke-opacity: 0.5; }

@@ -157,6 +157,8 @@
 
       /* 영역 렌더 */
       this.regionEls = [];
+      // 색→조각 index 목록(선택/강조를 해당 색만 순회하기 위한 인덱스)
+      this.colorRegions = art.palette.map(() => []);
       art.regions.forEach((region, i) => {
         const shape = createRegionEl(region);
         shape.setAttribute("class", "region");
@@ -164,7 +166,11 @@
         shape.dataset.c = region.c;
         svg.appendChild(shape);
         this.regionEls.push({ shape, text: null, region });
+        this.colorRegions[region.c].push(i);
       });
+      this._targeted = []; // 현재 강조 중인 조각 index들
+      this._activeSwatch = null;
+      this._numsHidden = null;
 
       /* 하단 팔레트 */
       const palette = document.createElement("div");
@@ -225,6 +231,17 @@
 
       this._findIdx = -1;
       this._armHint();
+      this._updateNumsLOD(true);
+    }
+
+    /* 번호 LOD: 사진 도안은 축소 상태에서 번호를 숨겨 렌더 비용 절감
+       (어차피 읽을 수 없는 크기 — 확대하면 나타남) */
+    _updateNumsLOD(force) {
+      if (!this.art.custom) return;
+      const hide = this.scale < 2.2;
+      if (!force && hide === this._numsHidden) return;
+      this._numsHidden = hide;
+      this.svg.classList.toggle("nums-off", hide);
     }
 
     /* 선택색의 남은 조각으로 화면 이동(누를 때마다 다음 조각 순환) */
@@ -463,18 +480,34 @@
     /* 각 영역 중앙에 번호 텍스트 배치(영역 위에 얹음) */
     _placeNumbers() {
       const custom = !!this.art.custom;
+      const numRe = /-?\d+\.?\d*/g;
       this.art.regions.forEach((region, i) => {
-        const shape = this.regionEls[i].shape;
-        const bb = shape.getBBox();
-        // 사진 도안은 region.nx/ny(영역 무게중심)를 우선 사용
-        const px = region.nx != null ? region.nx : bb.x + bb.width / 2;
-        const py = region.ny != null ? region.ny : bb.y + bb.height / 2;
+        let w, h, px, py;
+        if (region.shape === "path" && region.nx != null) {
+          // 수천 조각 도안: getBBox(레이아웃 강제) 대신 path 좌표를 직접 파싱
+          const nums = region.d.match(numRe);
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (let k = 0; k < nums.length; k += 2) {
+            const x = +nums[k], y = +nums[k + 1];
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+          w = maxX - minX; h = maxY - minY;
+          px = region.nx; py = region.ny;
+        } else {
+          const bb = this.regionEls[i].shape.getBBox();
+          w = bb.width; h = bb.height;
+          px = region.nx != null ? region.nx : bb.x + w / 2;
+          py = region.ny != null ? region.ny : bb.y + h / 2;
+        }
         const t = document.createElementNS(SVGNS, "text");
         t.setAttribute("x", px);
         t.setAttribute("y", py);
         t.setAttribute("class", "region-num");
         const minSize = custom ? 3.5 : 20;
-        const size = Math.max(minSize, Math.min(60, Math.min(bb.width, bb.height) * 0.5));
+        const size = Math.max(minSize, Math.min(60, Math.min(w, h) * 0.5));
         t.setAttribute("font-size", size);
         t.textContent = region.c + 1;
         this.svg.appendChild(t);
@@ -498,16 +531,28 @@
     }
 
     _select(idx) {
+      // 수천 조각 도안에서도 빠르도록: 전체 순회 대신
+      // (이전 강조 목록) + (새 색의 조각 목록)만 만진다
+      if (this._activeSwatch != null) {
+        this.swatchEls[this._activeSwatch].classList.remove("active");
+      }
+      this.swatchEls[idx].classList.add("active");
+      this._activeSwatch = idx;
       this.selected = idx;
-      this.swatchEls.forEach((b, i) =>
-        b.classList.toggle("active", i === idx)
-      );
-      // 선택한 번호에 해당하는 남은 영역 강조(테두리+배경+숫자 모두)
-      this.regionEls.forEach(({ shape, text, region }, i) => {
-        const isTarget = region.c === idx && !this.filled.has(i);
-        shape.classList.toggle("target", isTarget);
-        if (text) text.classList.toggle("target-num", isTarget);
-      });
+
+      for (const i of this._targeted) {
+        const { shape, text } = this.regionEls[i];
+        shape.classList.remove("target");
+        if (text) text.classList.remove("target-num");
+      }
+      this._targeted = [];
+      for (const i of this.colorRegions[idx]) {
+        if (this.filled.has(i)) continue;
+        const { shape, text } = this.regionEls[i];
+        shape.classList.add("target");
+        if (text) text.classList.add("target-num");
+        this._targeted.push(i);
+      }
     }
 
     _tap(i) {
@@ -565,9 +610,9 @@
         if (this.filled.size < this.art.regions.length) {
           this._select(this._firstUnfinishedColor());
         }
-      } else if (c === this.selected) {
-        this._select(c); // 강조 갱신
       }
+      // (색이 남아있으면 방금 칠한 조각의 강조는 _paint에서 이미 제거됨 —
+      //  전체 재강조는 불필요해서 하지 않는다. 5000조각에서 중요한 최적화)
       if (this.filled.size === this.art.regions.length) {
         setTimeout(() => this.onComplete && this.onComplete(this.art), 400);
       }
@@ -584,6 +629,7 @@
     _applyTransform() {
       this.viewport.style.transform =
         `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`;
+      this._updateNumsLOD();
       // 미니맵 위치 사각형은 프레임당 1회만 갱신(레이아웃 읽기 절약)
       if (!this._mmPending) {
         this._mmPending = true;
@@ -600,7 +646,7 @@
       const clampScale = (s) => Math.max(1, Math.min(maxScale, s));
 
       stage.addEventListener("pointerdown", (e) => {
-        stage.setPointerCapture(e.pointerId);
+        try { stage.setPointerCapture(e.pointerId); } catch (err) {} // 일부 환경 방어
         this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pointers.size === 1) {
           this._moved = false;

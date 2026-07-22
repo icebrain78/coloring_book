@@ -20,9 +20,13 @@
     }
   }
   function saveProgress(artId, filledIndices) {
-    const all = loadAllProgress();
-    all[artId] = filledIndices;
-    localStorage.setItem(STORE_KEY, JSON.stringify(all));
+    try {
+      const all = loadAllProgress();
+      all[artId] = filledIndices;
+      localStorage.setItem(STORE_KEY, JSON.stringify(all));
+    } catch (e) {
+      /* 저장소 사용 불가(사파리 비공개 모드 등) — 무시하고 계속 */
+    }
   }
   function getProgress(artId) {
     return loadAllProgress()[artId] || [];
@@ -232,7 +236,8 @@
 
     _paint(i, animate) {
       const { shape, text, region } = this.regionEls[i];
-      shape.setAttribute("fill", this.art.palette[region.c].hex);
+      // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
+      shape.style.fill = this.art.palette[region.c].hex;
       shape.classList.add("filled");
       shape.classList.remove("target");
       if (animate) shape.classList.add("pop");

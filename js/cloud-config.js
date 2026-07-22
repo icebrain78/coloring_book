@@ -10,6 +10,6 @@
  * anonKey는 공개되어도 되는 키입니다(행 단위 보안규칙이 데이터를 보호).
  */
 window.CLOUD_CONFIG = {
-  url: "",     // 예: "https://abcdefghij.supabase.co"
-  anonKey: "", // 예: "eyJhbGciOiJIUzI1NiIs..."
+  url: "https://ifjikwpmyfvzwetppnfx.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlmamlrd3BteWZ2endldHBwbmZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTg2MDYsImV4cCI6MjEwMDI3NDYwNn0._p1Bq0P7sG9H929OpC29beOZ2XymHsF5SJyYC6Tb3hw",
 };

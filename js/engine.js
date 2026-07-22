@@ -128,7 +128,9 @@
       const svg = document.createElementNS(SVGNS, "svg");
       const vw = art.w || 1000, vh = art.h || 1000;
       svg.setAttribute("viewBox", "0 0 " + vw + " " + vh);
-      svg.setAttribute("class", "c-svg" + (art.custom ? " custom-art" : ""));
+      // 영역이 아주 많은 도안은 강조 애니메이션을 꺼서 성능 확보
+      const huge = art.regions.length > 1500 ? " huge" : "";
+      svg.setAttribute("class", "c-svg" + (art.custom ? " custom-art" : "") + huge);
       this.svg = svg;
       this.viewport = viewport;
       viewport.appendChild(svg);

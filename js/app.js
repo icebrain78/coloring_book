@@ -236,8 +236,8 @@
     const DETAIL = {
       "쉬움": { cols: 72, minRegion: 26 },
       "보통": { cols: 110, minRegion: 14 },
-      "자세히": { cols: 150, minRegion: 8 },
-      "최고": { cols: 200, minRegion: 5 },
+      "자세히": { cols: 170, minRegion: 7 },
+      "최고": { cols: 280, minRegion: 4 }, // 실제 페인팅 키트급 세밀함
     };
 
     makeBtn.onclick = () => {

@@ -107,23 +107,30 @@ window.PhotoConverter = (function () {
     return { labels, centroids };
   }
 
-  /* ── 모드 필터 (3×3 최빈값) ── */
+  /*
+   * ── 모드 필터 (3×3 최빈값) ──
+   * 완전히 고립된 셀(3×3 안에 같은 색이 자기뿐)만 최빈값으로 교체.
+   * 붓터치처럼 폭 1~2칸짜리 가늘고 긴 획은 이웃에 같은 색이 이어져
+   * 있으므로 지워지지 않는다(뭉개짐 방지).
+   */
   function modeFilter(grid, cols, rows) {
     const out = grid.slice();
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
+        const me = grid[y * cols + x];
         const counts = {};
-        let best = grid[y * cols + x], bestc = 0;
+        let best = me, bestc = 0, myc = 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             const nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
             const v = grid[ny * cols + nx];
             counts[v] = (counts[v] || 0) + 1;
+            if (v === me) myc++;
             if (counts[v] > bestc) { bestc = counts[v]; best = v; }
           }
         }
-        out[y * cols + x] = best;
+        out[y * cols + x] = myc <= 1 ? best : me; // 고립 셀만 교체
       }
     }
     return out;
@@ -273,7 +280,7 @@ window.PhotoConverter = (function () {
     const n = pts.length;
     const P = pts.map((p) => [p[0] * cw, p[1] * ch]);
     const R = Math.min(cw, ch); // 모서리 반경 = 셀 1칸
-    const r = (v) => Math.round(v * 10) / 10;
+    const r = (v) => Math.round(v); // 정수 좌표(0.1% 오차, 저장 용량 절약)
     const pt = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
     const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 

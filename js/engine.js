@@ -421,18 +421,22 @@
       return ((i * 2654435761) >>> 0) % 3; // 조각별 고정 '랜덤' 변형
     }
 
-    /* 붓결 타일 캔버스(색+브러시+변형별 1회 생성, 전역 캐시) */
+    /* 붓결 타일 캔버스(색+브러시+변형별 1회 생성, 전역 캐시).
+       - 획을 9방향 랩어라운드로 그려 이음새 없는(seamless) 타일
+       - 명암은 흑백 대신 바탕색을 밝힘/어둡게 튼 색조(탁해지지 않음)
+       - 유화는 획마다 밝은 윗날+어두운 아랫날로 임파스토 입체감 */
     _brushTile(hex, v, kind) {
       if (!ColoringEngine._tiles) ColoringEngine._tiles = {};
       const key = hex + "|" + kind + "|" + v;
       if (ColoringEngine._tiles[key]) return ColoringEngine._tiles[key];
-      const S = 128;
+      const S = 160;
       const cvs = document.createElement("canvas");
       cvs.width = S; cvs.height = S;
       const g = cvs.getContext("2d");
       g.fillStyle = hex;
       g.fillRect(0, 0, S, S);
-      // 고정 시드 난수(같은 색·브러시·변형이면 항상 같은 질감)
+
+      // 고정 시드 난수
       let seed = v * 7349 + 11;
       for (let k = 0; k < kind.length; k++) seed = (seed * 31 + kind.charCodeAt(k)) >>> 0;
       for (let k = 0; k < hex.length; k++) seed = (seed * 31 + hex.charCodeAt(k)) >>> 0;
@@ -440,73 +444,135 @@
         seed = (seed * 1664525 + 1013904223) >>> 0;
         return seed / 4294967296;
       };
-      const wb = (a) => "rgba(" + (rnd() > 0.5 ? "255,255,255" : "0,0,0") + "," + a.toFixed(3) + ")";
+
+      // 바탕색 기반 밝음/어두움 색조
+      const R = parseInt(hex.slice(1, 3), 16), G = parseInt(hex.slice(3, 5), 16), B = parseInt(hex.slice(5, 7), 16);
+      const mix = (c, t, target) => Math.round(c + (target - c) * t);
+      const lightC = (a) => "rgba(" + mix(R, 0.5, 255) + "," + mix(G, 0.48, 250) + "," + mix(B, 0.4, 232) + "," + a.toFixed(3) + ")";
+      const darkC = (a) => "rgba(" + mix(R, 0.42, 8) + "," + mix(G, 0.4, 8) + "," + mix(B, 0.34, 30) + "," + a.toFixed(3) + ")";
+
+      // 경계에 걸치는 그리기만 이웃 오프셋으로 반복 → 이음새 없는 타일
+      // (bbox가 타일과 겹치는 오프셋만 그려서 생성 비용 최소화)
+      const wrapped = (draw, x0, y0, x1, y1) => {
+        for (let ox = -1; ox <= 1; ox++) {
+          for (let oy = -1; oy <= 1; oy++) {
+            if (x1 + ox * S < 0 || x0 + ox * S > S || y1 + oy * S < 0 || y0 + oy * S > S) continue;
+            g.save();
+            g.translate(ox * S, oy * S);
+            draw();
+            g.restore();
+          }
+        }
+      };
+      g.lineCap = "round";
 
       if (kind === "water") {
-        // 수채: 넓고 부드러운 얼룩 + 종이 알갱이
-        for (let k = 0; k < 10; k++) {
-          const x = rnd() * S, y = rnd() * S, r = 22 + rnd() * 46;
-          const col = rnd() > 0.45 ? "255,255,255" : "0,0,0";
-          const grad = g.createRadialGradient(x, y, 0, x, y, r);
-          grad.addColorStop(0, "rgba(" + col + "," + (0.05 + rnd() * 0.06).toFixed(3) + ")");
-          grad.addColorStop(1, "rgba(" + col + ",0)");
-          g.fillStyle = grad;
-          g.beginPath();
-          g.arc(x, y, r, 0, Math.PI * 2);
-          g.fill();
+        // 수채: 부드러운 얼룩(가장자리 살짝 진하게) + 종이 알갱이
+        for (let k = 0; k < 12; k++) {
+          const x = rnd() * S, y = rnd() * S, r = 20 + rnd() * 42;
+          const light = rnd() > 0.45;
+          const a = 0.045 + rnd() * 0.05;
+          const m = r + 3;
+          wrapped(() => {
+            const grad = g.createRadialGradient(x, y, 0, x, y, r);
+            grad.addColorStop(0, light ? lightC(a) : darkC(a * 0.9));
+            grad.addColorStop(0.8, light ? lightC(a * 0.4) : darkC(a * 0.35));
+            grad.addColorStop(1, "rgba(0,0,0,0)");
+            g.fillStyle = grad;
+            g.beginPath();
+            g.arc(x, y, r, 0, Math.PI * 2);
+            g.fill();
+            // 워터마크 가장자리
+            g.strokeStyle = darkC(a * 0.5);
+            g.lineWidth = 1.2;
+            g.beginPath();
+            g.arc(x, y, r * (0.85 + rnd() * 0.1), 0, Math.PI * 2);
+            g.stroke();
+          }, x - m, y - m, x + m, y + m);
         }
-        for (let k = 0; k < 150; k++) {
-          g.fillStyle = wb(0.02 + rnd() * 0.04);
-          g.fillRect(rnd() * S, rnd() * S, 1.5, 1.5);
+        for (let k = 0; k < 170; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const light = rnd() > 0.5;
+          const a = 0.02 + rnd() * 0.035;
+          wrapped(() => {
+            g.fillStyle = light ? lightC(a) : darkC(a);
+            g.fillRect(x, y, 1.4, 1.4);
+          }, x, y, x + 2, y + 2);
         }
       } else if (kind === "crayon") {
-        // 크레용: 짧고 거친 긁힘 + 굵은 결
+        // 크레용: 종이 알갱이 위로 긁힌 왁스 결
         const ang = [0.5, -0.4, 1.1][v % 3] + (rnd() - 0.5) * 0.2;
-        g.translate(S / 2, S / 2); g.rotate(ang); g.translate(-S / 2, -S / 2);
-        g.lineCap = "round";
-        for (let k = 0; k < 95; k++) {
-          const x = rnd() * S * 1.6 - S * 0.3, y = rnd() * S * 1.6 - S * 0.3;
-          const len = 5 + rnd() * 15;
-          g.strokeStyle = wb(0.05 + rnd() * 0.1);
-          g.lineWidth = 1 + rnd() * 1.7;
-          g.beginPath();
-          g.moveTo(x, y);
-          g.lineTo(x + len, y + (rnd() - 0.5) * 5);
-          g.stroke();
+        const dx = Math.cos(ang), dy = Math.sin(ang);
+        for (let k = 0; k < 110; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const len = 5 + rnd() * 16;
+          const j = (rnd() - 0.5) * 0.5; // 방향 흔들림
+          const ddx = Math.cos(ang + j), ddy = Math.sin(ang + j);
+          const light = rnd() > 0.42;
+          const a = 0.05 + rnd() * 0.09;
+          const w = 0.8 + rnd() * 1.6;
+          const ex = x + ddx * len, ey = y + ddy * len;
+          wrapped(() => {
+            g.strokeStyle = light ? lightC(a) : darkC(a);
+            g.lineWidth = w;
+            g.beginPath();
+            g.moveTo(x, y);
+            g.lineTo(ex, ey);
+            g.stroke();
+          }, Math.min(x, ex) - w - 1, Math.min(y, ey) - w - 1, Math.max(x, ex) + w + 1, Math.max(y, ey) + w + 1);
         }
-        for (let k = 0; k < 7; k++) {
-          const y = rnd() * S * 1.8 - S * 0.4;
-          g.strokeStyle = wb(0.035 + rnd() * 0.05);
-          g.lineWidth = 5 + rnd() * 8;
-          g.beginPath();
-          g.moveTo(-S * 0.5, y);
-          g.lineTo(S * 1.5, y + (rnd() - 0.5) * 14);
-          g.stroke();
+        for (let k = 0; k < 90; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const light = rnd() > 0.5;
+          const a = 0.03 + rnd() * 0.05;
+          wrapped(() => {
+            g.fillStyle = light ? lightC(a) : darkC(a);
+            g.fillRect(x, y, 1.6, 1.6);
+          }, x, y, x + 2, y + 2);
         }
       } else {
-        // 유화(기본): 긴 붓결 + 짧은 덧칠
-        const ang = [0.35, -0.65, 1.25][v % 3] + (rnd() - 0.5) * 0.25;
-        g.translate(S / 2, S / 2); g.rotate(ang); g.translate(-S / 2, -S / 2);
-        g.lineCap = "round";
-        for (let k = 0; k < 22; k++) {
-          const y = rnd() * S * 2 - S * 0.5;
-          g.strokeStyle = wb(0.028 + rnd() * 0.065);
-          g.lineWidth = 2.5 + rnd() * 6;
-          g.beginPath();
-          g.moveTo(-S * 0.6, y);
-          g.quadraticCurveTo(S * 0.5, y + (rnd() - 0.5) * 16, S * 1.6, y + (rnd() - 0.5) * 14);
-          g.stroke();
+        // 유화: 조밀하게 겹치는 곡선 획 + 임파스토(밝은 윗날/어두운 아랫날)
+        const baseAng = [0.35, -0.65, 1.25][v % 3];
+        for (let k = 0; k < 44; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const ang = baseAng + (rnd() - 0.5) * 0.55;
+          const dx = Math.cos(ang), dy = Math.sin(ang);
+          const px = -dy, py = dx; // 획의 수직 방향(날 오프셋용)
+          const len = 26 + rnd() * 64;
+          const bow = (rnd() - 0.5) * 18; // 곡률
+          const w = 3.5 + rnd() * 8;
+          const a = 0.035 + rnd() * 0.055;
+          const off = w * 0.28;
+          const strokePath = (sx, sy) => {
+            g.beginPath();
+            g.moveTo(x + sx, y + sy);
+            g.quadraticCurveTo(
+              x + dx * len * 0.5 + px * bow + sx,
+              y + dy * len * 0.5 + py * bow + sy,
+              x + dx * len + sx,
+              y + dy * len + sy
+            );
+            g.stroke();
+          };
+          const ex = x + dx * len, ey = y + dy * len;
+          const m = w + Math.abs(bow) + off + 3;
+          wrapped(() => {
+            g.lineWidth = w;
+            g.strokeStyle = darkC(a);            // 아랫날(그림자)
+            strokePath(px * off, py * off);
+            g.strokeStyle = lightC(a * 1.05);    // 윗날(하이라이트)
+            strokePath(-px * off, -py * off);
+          }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
         }
-        for (let k = 0; k < 14; k++) {
-          const x = rnd() * S * 1.6 - S * 0.3;
-          const y = rnd() * S * 1.6 - S * 0.3;
-          const len = 14 + rnd() * 30;
-          g.strokeStyle = wb(0.035 + rnd() * 0.075);
-          g.lineWidth = 3 + rnd() * 6;
-          g.beginPath();
-          g.moveTo(x, y);
-          g.quadraticCurveTo(x + len * 0.5, y + (rnd() - 0.5) * 8, x + len, y + (rnd() - 0.5) * 6);
-          g.stroke();
+        // 미세 알갱이(캔버스 결)
+        for (let k = 0; k < 70; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const light = rnd() > 0.5;
+          const a = 0.02 + rnd() * 0.03;
+          wrapped(() => {
+            g.fillStyle = light ? lightC(a) : darkC(a);
+            g.fillRect(x, y, 1.5, 1.5);
+          }, x, y, x + 2, y + 2);
         }
       }
       ColoringEngine._tiles[key] = cvs;

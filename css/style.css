@@ -110,6 +110,32 @@ button:disabled { opacity: 0.55; }
   font-weight: 700; font-size: 13px; color: var(--brand);
   background: #efecfd; padding: 7px 10px; border-radius: 10px;
 }
+.c-mute-btn { font-size: 16px; padding: 5px 6px; }
+
+/* 남은 조각 찾기 버튼 */
+.c-findbtn {
+  position: absolute; right: 12px; bottom: 14px; z-index: 5;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--card); box-shadow: var(--shadow);
+  border: 1px solid var(--line); font-size: 20px;
+}
+.c-findbtn:active { transform: scale(0.94); }
+
+/* 힌트/찾기 반짝임 */
+.region.hintflash { animation: hintFlash 0.6s ease-in-out 3; }
+@keyframes hintFlash {
+  0%, 100% { fill: #ffffff; }
+  50% { fill: #ffd23f; }
+}
+
+/* 갤러리 통계 줄 */
+.g-stats { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* 완성본 미리보기 저장 버튼 */
+.c-preview-save {
+  padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 14px;
+  background: var(--brand); color: #fff;
+}
 
 /* ── 미니맵 ── */
 .c-minimap {

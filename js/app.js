@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.5"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v1.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -14,6 +14,69 @@
   const engine = new ColoringEngine(canvasEl);
   engine.onExit = showGallery;
   engine.onComplete = celebrate;
+
+  /* ── 통계 (총 칠한 칸·완성작·연속 일수) ── */
+  const STATS_KEY = "coloring:stats:v1";
+  const AppStats = {
+    load() {
+      try { return JSON.parse(localStorage.getItem(STATS_KEY)) || { pieces: 0, completed: 0, days: {} }; }
+      catch (e) { return { pieces: 0, completed: 0, days: {} }; }
+    },
+    save(s) {
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch (e) {}
+    },
+    today() { return new Date().toISOString().slice(0, 10); },
+    paint() {
+      const s = this.load();
+      s.pieces++;
+      s.days[this.today()] = 1;
+      this.save(s);
+    },
+    complete() {
+      const s = this.load();
+      s.completed++;
+      this.save(s);
+      Cloud.schedulePush();
+    },
+    streak() {
+      const s = this.load();
+      let n = 0;
+      const d = new Date();
+      while (s.days[d.toISOString().slice(0, 10)]) {
+        n++;
+        d.setDate(d.getDate() - 1);
+      }
+      return n;
+    },
+  };
+  window.AppStats = AppStats;
+
+  /* ── 완성작 PNG 저장/공유 ── */
+  function saveArtImage(art) {
+    const vw = art.w || 1000, vh = art.h || 1000;
+    const W = 1600;
+    const cvs = document.createElement("canvas");
+    cvs.width = W;
+    cvs.height = Math.round((W * vh) / vw);
+    const ctx = cvs.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+    ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
+    art.regions.forEach((r) => engine._drawRegionOnCtx(ctx, r, art.palette[r.c].hex));
+    cvs.toBlob(async (blob) => {
+      const file = new File([blob], (art.title || "컬러링") + ".png", { type: "image/png" });
+      // 모바일: 공유 시트(카톡 등), 미지원 시 다운로드
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: art.title }); return; } catch (e) {}
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, "image/png");
+  }
+  window.AppShare = saveArtImage;
 
   /* ── 내 사진 도안 저장소 ── */
   function loadCustom() {
@@ -235,6 +298,18 @@
     imp.onclick = () => impInput.click();
     bar.append(exp, imp, impInput);
     header.appendChild(bar);
+
+    // 통계 줄
+    const st = AppStats.load();
+    if (st.pieces > 0) {
+      const stats = document.createElement("p");
+      stats.className = "g-stats";
+      const streak = AppStats.streak();
+      stats.textContent =
+        "🧩 " + st.pieces.toLocaleString() + "칸 칠함 · 🖼 완성 " + st.completed + "개" +
+        (streak > 1 ? " · 🔥 연속 " + streak + "일" : "");
+      header.appendChild(stats);
+    }
     galleryEl.appendChild(header);
 
     const grid = document.createElement("div");
@@ -466,6 +541,7 @@
 
   /* ── 완성 축하 ── */
   function celebrate(art) {
+    AppStats.complete();
     overlayEl.innerHTML = "";
     const box = document.createElement("div");
     box.className = "o-box";
@@ -491,8 +567,20 @@
 
     const btns = document.createElement("div");
     btns.className = "o-btns";
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "o-btn primary";
+    saveBtn.textContent = "💾 이미지 저장 / 공유";
+    saveBtn.onclick = () => saveArtImage(art);
+    const replayBtn = document.createElement("button");
+    replayBtn.className = "o-btn";
+    replayBtn.textContent = "🎬 리플레이 보기";
+    replayBtn.onclick = () => {
+      if (replayBtn.disabled) return;
+      replayBtn.disabled = true;
+      playReplay(art, thumb, () => { replayBtn.disabled = false; });
+    };
     const galleryBtn = document.createElement("button");
-    galleryBtn.className = "o-btn primary";
+    galleryBtn.className = "o-btn";
     galleryBtn.textContent = "갤러리로";
     galleryBtn.onclick = showGallery;
     const againBtn = document.createElement("button");
@@ -504,11 +592,43 @@
       localStorage.setItem("coloring:progress:v1", JSON.stringify(all));
       openArt(art);
     };
-    btns.append(galleryBtn, againBtn);
+    btns.append(saveBtn, replayBtn, galleryBtn, againBtn);
 
     box.append(thumb, h, p, btns);
     overlayEl.append(confetti, box);
     overlayEl.classList.remove("hidden");
+  }
+
+  /* ── 리플레이: 칠한 순서 그대로 타임랩스 재생 ── */
+  function playReplay(art, container, onEnd) {
+    const vw = art.w || 1000, vh = art.h || 1000;
+    const order = ColoringStore.getProgress(art.id); // 저장 순서 = 칠한 순서
+    const seq = order.length === art.regions.length ? order : art.regions.map((_, i) => i);
+    const cvs = document.createElement("canvas");
+    const W = 640;
+    cvs.width = W;
+    cvs.height = Math.round((W * vh) / vw);
+    cvs.style.width = "100%";
+    cvs.style.height = "100%";
+    cvs.style.objectFit = "contain";
+    const ctx = cvs.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+    ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
+    container.innerHTML = "";
+    container.appendChild(cvs);
+
+    // 약 4초 안에 끝나도록 프레임당 개수 조절
+    const perFrame = Math.max(1, Math.ceil(seq.length / 240));
+    let pos = 0;
+    (function step() {
+      for (let k = 0; k < perFrame && pos < seq.length; k++, pos++) {
+        const r = art.regions[seq[pos]];
+        engine._drawRegionOnCtx(ctx, r, art.palette[r.c].hex);
+      }
+      if (pos < seq.length) requestAnimationFrame(step);
+      else if (onEnd) onEnd();
+    })();
   }
 
   /* ── 서비스워커(오프라인/설치) ── */

@@ -113,17 +113,29 @@
       const back = document.createElement("button");
       back.className = "c-back";
       back.innerHTML = "‹ 갤러리";
-      back.onclick = () => this.onExit && this.onExit();
+      back.onclick = () => {
+        clearTimeout(this._hintTimer);
+        this.onExit && this.onExit();
+      };
       const title = document.createElement("div");
       title.className = "c-title";
       title.textContent = art.title;
       this.progressEl = document.createElement("div");
       this.progressEl.className = "c-progress";
+      const muteBtn = document.createElement("button");
+      muteBtn.className = "c-mute-btn";
+      this.muted = localStorage.getItem("coloring:muted:v1") === "1";
+      muteBtn.textContent = this.muted ? "🔇" : "🔊";
+      muteBtn.onclick = () => {
+        this.muted = !this.muted;
+        localStorage.setItem("coloring:muted:v1", this.muted ? "1" : "0");
+        muteBtn.textContent = this.muted ? "🔇" : "🔊";
+      };
       const previewBtn = document.createElement("button");
       previewBtn.className = "c-preview-btn";
       previewBtn.textContent = "완성본";
       previewBtn.onclick = () => this._togglePreview();
-      top.append(back, title, previewBtn, this.progressEl);
+      top.append(back, title, muteBtn, previewBtn, this.progressEl);
 
       /* 캔버스 영역(줌 무대) */
       const stage = document.createElement("div");
@@ -201,6 +213,85 @@
       this._select(this._firstUnfinishedColor());
       this._updateProgress();
       this._bindZoomPan(stage);
+
+      // 🔍 남은 조각 찾기 버튼(무대 우하단)
+      const findBtn = document.createElement("button");
+      findBtn.className = "c-findbtn";
+      findBtn.innerHTML = "🔍";
+      findBtn.title = "남은 조각 찾기";
+      findBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      findBtn.onclick = () => this._findNext();
+      stage.appendChild(findBtn);
+
+      this._findIdx = -1;
+      this._armHint();
+    }
+
+    /* 선택색의 남은 조각으로 화면 이동(누를 때마다 다음 조각 순환) */
+    _findNext() {
+      const c = this.selected;
+      const remain = [];
+      this.art.regions.forEach((r, i) => {
+        if (r.c === c && !this.filled.has(i)) remain.push(i);
+      });
+      if (!remain.length) return;
+      this._findIdx = (this._findIdx + 1) % remain.length;
+      const i = remain[this._findIdx];
+      // 편한 배율로 확대(이미 더 크게 보고 있으면 유지)
+      const wantScale = this.art.custom ? 6 : 2.2;
+      if (this.scale < wantScale) this.scale = wantScale;
+      this._applyTransform();
+      // 조각이 화면 중앙에 오도록 이동
+      const bb = this.regionEls[i].shape.getBoundingClientRect();
+      const st = this.stageEl.getBoundingClientRect();
+      this.tx += st.left + st.width / 2 - (bb.left + bb.width / 2);
+      this.ty += st.top + st.height / 2 - (bb.top + bb.height / 2);
+      this._applyTransform();
+      this._flash(i);
+    }
+
+    /* 특정 조각 반짝임 */
+    _flash(i) {
+      const el = this.regionEls[i].shape;
+      el.classList.remove("hintflash");
+      void el.offsetWidth;
+      el.classList.add("hintflash");
+      setTimeout(() => el.classList.remove("hintflash"), 1900);
+    }
+
+    /* 20초 동안 색칠이 없으면 남은 조각 하나를 반짝여주는 힌트 */
+    _armHint() {
+      clearTimeout(this._hintTimer);
+      this._hintTimer = setTimeout(() => {
+        if (this.filled.size < this.art.regions.length) {
+          const c = this.selected;
+          const i = this.art.regions.findIndex(
+            (r, idx) => r.c === c && !this.filled.has(idx)
+          );
+          if (i >= 0) this._flash(i);
+        }
+        this._armHint();
+      }, 20000);
+    }
+
+    /* 색칠 효과음(짧은 틱) + 진동 */
+    _tick() {
+      if (this.muted) return;
+      try {
+        if (!ColoringEngine._audio) {
+          ColoringEngine._audio = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ac = ColoringEngine._audio;
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = "sine";
+        o.frequency.value = 620 + (this.filled.size % 5) * 60; // 살짝씩 다른 음
+        g.gain.setValueAtTime(0.09, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.09);
+        o.connect(g).connect(ac.destination);
+        o.start();
+        o.stop(ac.currentTime + 0.1);
+      } catch (e) { /* 오디오 미지원 무시 */ }
+      if (navigator.vibrate) navigator.vibrate(8);
     }
 
     /* 팔레트 원 둘레의 진행률 링 갱신 */
@@ -355,7 +446,14 @@
       const label = document.createElement("div");
       label.className = "c-preview-label";
       label.textContent = "완성본 미리보기 · 탭하면 닫혀요";
-      div.append(this._previewCanvas, label);
+      const save = document.createElement("button");
+      save.className = "c-preview-save";
+      save.textContent = "💾 이미지 저장 / 공유";
+      save.onclick = (e) => {
+        e.stopPropagation();
+        if (window.AppShare) window.AppShare(this.art);
+      };
+      div.append(this._previewCanvas, save, label);
       div.addEventListener("pointerdown", (e) => e.stopPropagation());
       div.onclick = () => this._togglePreview();
       this.stageEl.appendChild(div);
@@ -420,6 +518,10 @@
         this._paint(i, true);
         this.filled.add(i);
         saveProgress(this.art.id, [...this.filled]);
+        this._tick();                      // 효과음+진동
+        this._armHint();                   // 힌트 타이머 리셋
+        this._findIdx = -1;
+        if (window.AppStats) window.AppStats.paint(); // 통계
         this._afterPaint(i);
       } else {
         // 색이 안 맞음 → 흔들기 피드백

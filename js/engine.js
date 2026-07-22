@@ -158,7 +158,11 @@
       const palette = document.createElement("div");
       palette.className = "c-palette";
       this.paletteEl = palette;
+      this.swatchWraps = [];
       this.swatchEls = art.palette.map((col, idx) => {
+        // 링(진행률) + 색 버튼
+        const wrap = document.createElement("div");
+        wrap.className = "swatch-wrap";
         const b = document.createElement("button");
         b.className = "swatch";
         b.style.background = col.hex;
@@ -168,9 +172,18 @@
         num.textContent = idx + 1;
         b.appendChild(num);
         b.onclick = () => this._select(idx);
-        palette.appendChild(b);
+        wrap.appendChild(b);
+        palette.appendChild(wrap);
+        this.swatchWraps.push(wrap);
         return b;
       });
+
+      // 색별 조각 수/완료 수 (팔레트 링 표시용)
+      this.colorTotal = art.palette.map(
+        (_, c) => art.regions.filter((r) => r.c === c).length
+      );
+      this.colorDone = art.palette.map(() => 0);
+      this.filled.forEach((i) => this.colorDone[art.regions[i].c]++);
 
       this.root.append(top, stage, palette);
 
@@ -178,9 +191,46 @@
       this._placeNumbers();
       this._buildMinimap(stage);
       this._applyFilledState();
+      // 저장된 진행에 맞춰 링·완료 표시 복원
+      art.palette.forEach((_, c) => {
+        this._updateRing(c);
+        if (this.colorTotal[c] > 0 && this.colorDone[c] >= this.colorTotal[c]) {
+          this.swatchEls[c].classList.add("done");
+        }
+      });
       this._select(this._firstUnfinishedColor());
       this._updateProgress();
       this._bindZoomPan(stage);
+    }
+
+    /* 팔레트 원 둘레의 진행률 링 갱신 */
+    _updateRing(c) {
+      const total = this.colorTotal[c] || 1;
+      const pct = Math.min(100, (this.colorDone[c] / total) * 100);
+      const done = this.colorDone[c] >= this.colorTotal[c] && this.colorTotal[c] > 0;
+      this.swatchWraps[c].style.background = done
+        ? "conic-gradient(#2eb872 100%, #2eb872 0)"
+        : "conic-gradient(var(--brand) " + pct + "%, var(--line) 0)";
+    }
+
+    /* 색 하나 완료 시 파티클 터짐 효과 */
+    _burst(x, y, hex) {
+      const holder = document.createElement("div");
+      holder.className = "burst";
+      holder.style.left = x + "px";
+      holder.style.top = y + "px";
+      for (let i = 0; i < 14; i++) {
+        const p = document.createElement("i");
+        const a = (i / 14) * Math.PI * 2;
+        const d = 36 + Math.random() * 28;
+        p.style.setProperty("--dx", Math.cos(a) * d + "px");
+        p.style.setProperty("--dy", Math.sin(a) * d + "px");
+        p.style.background = i % 3 === 2 ? "#ffd23f" : hex;
+        p.style.animationDelay = Math.random() * 0.06 + "s";
+        holder.appendChild(p);
+      }
+      document.body.appendChild(holder);
+      setTimeout(() => holder.remove(), 850);
     }
 
     /* ── 캔버스에 영역 하나를 그리는 헬퍼(미니맵·완성본 미리보기 공용) ── */
@@ -398,12 +448,18 @@
     _afterPaint(i) {
       this._updateProgress();
       const c = this.art.regions[i].c;
-      // 해당 색 완료 표시
-      const colorDone = !this.art.regions.some(
-        (r, idx) => r.c === c && !this.filled.has(idx)
-      );
+      this.colorDone[c]++;
+      this._updateRing(c);
+      const colorDone = this.colorDone[c] >= this.colorTotal[c];
       if (colorDone) {
-        this.swatchEls[c].classList.add("done");
+        // 한 색 완료: 링 초록 + ✓ 배지 + 팔레트 원에서 파티클 터짐
+        const sw = this.swatchEls[c];
+        sw.classList.add("done");
+        sw.classList.remove("donePop");
+        void sw.offsetWidth;
+        sw.classList.add("donePop");
+        const r = sw.getBoundingClientRect();
+        this._burst(r.left + r.width / 2, r.top + r.height / 2, this.art.palette[c].hex);
         if (this.filled.size < this.art.regions.length) {
           this._select(this._firstUnfinishedColor());
         }

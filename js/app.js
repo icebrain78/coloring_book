@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.4"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v1.5"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -35,6 +35,12 @@
     const prog = ColoringStore.loadAllProgress();
     delete prog[id];
     localStorage.setItem("coloring:progress:v1", JSON.stringify(prog));
+    // 삭제 기록 → 다른 기기에서도 지워지도록(병합 시 전파)
+    try {
+      const del = JSON.parse(localStorage.getItem("coloring:deleted:v1")) || {};
+      del[id] = Date.now();
+      localStorage.setItem("coloring:deleted:v1", JSON.stringify(del));
+    } catch (e) {}
     Cloud.schedulePush();
   }
 
@@ -524,7 +530,22 @@
 
   showGallery();
   // 로그인돼 있으면 클라우드 내려받아 병합 후 갤러리 갱신
+  let lastPull = Date.now();
   Cloud.init().then(() => {
     if (!galleryEl.classList.contains("hidden")) showGallery();
+  });
+
+  // 창으로 돌아올 때마다 클라우드 최신 내용 반영(다른 기기의 변경 수신)
+  function pullIfStale() {
+    if (!Cloud.enabled || !Cloud.user()) return;
+    if (Date.now() - lastPull < 10000) return; // 10초 쿨다운
+    lastPull = Date.now();
+    Cloud.pullMerge().then((ok) => {
+      if (ok && !galleryEl.classList.contains("hidden")) showGallery();
+    });
+  }
+  window.addEventListener("focus", pullIfStale);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) pullIfStale();
   });
 })();

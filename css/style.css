@@ -192,25 +192,44 @@ button:disabled { opacity: 0.55; }
   scrollbar-width: none;
 }
 .c-palette::-webkit-scrollbar { display: none; }
+/* 진행률 링(원 둘레) — 배경을 conic-gradient로 채워 표시 */
+.swatch-wrap {
+  flex: 0 0 auto; padding: 3px; border-radius: 50%;
+  background: conic-gradient(var(--line) 0, var(--line) 0);
+  transition: transform 0.12s ease;
+}
 .swatch {
-  position: relative; flex: 0 0 auto;
-  width: 52px; height: 52px; border-radius: 50%;
-  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06);
+  position: relative; display: block;
+  width: 48px; height: 48px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06), 0 0 0 2px #fff inset;
   transition: transform 0.12s ease;
 }
 .swatch-num {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 18px; color: #fff;
+  font-weight: 800; font-size: 17px; color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
-.swatch.active { transform: translateY(-6px) scale(1.08); box-shadow: 0 0 0 3px var(--brand); }
-.swatch.done { opacity: 0.35; }
+.swatch.active { transform: scale(1.1); box-shadow: 0 0 0 3px var(--brand); }
 .swatch.done::after {
-  content: "✓"; position: absolute; inset: 0;
+  content: "✓"; position: absolute; right: -4px; top: -4px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #2eb872; color: #fff; font-size: 12px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-.swatch.done .swatch-num { display: none; }
+.swatch.donePop { animation: pop 0.45s ease; }
+
+/* 색 완료 파티클 터짐 */
+.burst { position: fixed; z-index: 45; pointer-events: none; }
+.burst i {
+  position: absolute; left: -4px; top: -4px;
+  width: 9px; height: 9px; border-radius: 50%;
+  animation: burstFly 0.65s ease-out forwards;
+}
+@keyframes burstFly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; }
+}
 
 /* ───────── 사진 변환 화면 ───────── */
 #converter { display: flex; flex-direction: column; height: 100%; }

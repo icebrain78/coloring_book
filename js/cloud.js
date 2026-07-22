@@ -15,6 +15,7 @@ window.Cloud = (function () {
   const SESSION_KEY = "coloring:cloud:session:v1";
   const CUSTOM_KEY = "coloring:custom:v1";
   const PROGRESS_KEY = "coloring:progress:v1";
+  const DELETED_KEY = "coloring:deleted:v1"; // { 도안id: 삭제시각 } — 삭제 전파용
 
   let session = null; // { access_token, refresh_token, expires_at, user:{id,email} }
   let pushTimer = null;
@@ -115,40 +116,52 @@ window.Cloud = (function () {
 
   /* ── 로컬 데이터 읽기/쓰기 ── */
   function localData() {
-    let custom = [], progress = {};
+    let custom = [], progress = {}, deleted = {};
     try { custom = JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch (e) {}
     try { progress = JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) {}
-    return { custom, progress, t: Date.now() };
+    try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) {}
+    return { custom, progress, deleted, t: Date.now() };
   }
   function writeLocal(data) {
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(data.custom)); } catch (e) {}
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(data.progress)); } catch (e) {}
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(data.deleted || {})); } catch (e) {}
   }
 
   /*
-   * 병합 규칙(잃어버리는 것 없게):
-   * - 도안: id 기준 합집합, 같은 id면 savedAt이 최신인 쪽
-   * - 진행상황: 도안별로 더 많이 칠한 쪽
+   * 병합 규칙:
+   * - 삭제 기록(deleted: id→삭제시각)을 양쪽 합침(더 최근 시각 우선)
+   * - 도안: id 기준 합집합, 같은 id면 savedAt이 최신인 쪽.
+   *   단, 삭제 시각이 도안 저장 시각보다 나중이면 제외 → 삭제가 모든
+   *   기기로 전파되고, 삭제 후 새로 만든 도안(새 id)은 살아남는다.
+   * - 진행상황: 도안별로 더 많이 칠한 쪽. 삭제된 도안 것은 버림.
    */
   function mergeData(a, b) {
+    const deleted = {};
+    [a.deleted || {}, b.deleted || {}].forEach((m) => {
+      for (const k in m) deleted[k] = Math.max(deleted[k] || 0, m[k]);
+    });
     const byId = {};
     (a.custom || []).concat(b.custom || []).forEach((art) => {
       const prev = byId[art.id];
       if (!prev || (art.savedAt || 0) >= (prev.savedAt || 0)) byId[art.id] = art;
     });
     const custom = Object.values(byId)
+      .filter((art) => !((deleted[art.id] || 0) >= (art.savedAt || 0)))
       .sort((x, y) => (y.savedAt || 0) - (x.savedAt || 0))
       .slice(0, 8); // 클라우드 포함 보관 한도
+    const alive = new Set(custom.map((c) => c.id));
     const progress = {};
     const keys = new Set(
       Object.keys(a.progress || {}).concat(Object.keys(b.progress || {}))
     );
     keys.forEach((k) => {
+      if (deleted[k] && !alive.has(k)) return; // 삭제된 도안의 진행상황
       const pa = (a.progress || {})[k] || [];
       const pb = (b.progress || {})[k] || [];
       progress[k] = pa.length >= pb.length ? pa : pb;
     });
-    return { custom, progress, t: Date.now() };
+    return { custom, progress, deleted, t: Date.now() };
   }
 
   /* 클라우드에서 내려받아 로컬과 병합 → 로컬 저장 */

@@ -243,7 +243,10 @@
     _paint(i, animate) {
       const { shape, text, region } = this.regionEls[i];
       // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
-      shape.style.fill = this.art.palette[region.c].hex;
+      const hex = this.art.palette[region.c].hex;
+      shape.style.fill = hex;
+      // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈
+      if (this.art.custom) shape.style.stroke = hex;
       shape.classList.add("filled");
       shape.classList.remove("target");
       if (animate) shape.classList.add("pop");

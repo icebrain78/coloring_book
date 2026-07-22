@@ -69,8 +69,14 @@
           break;
       }
       const painted = fullColor || filled.has(i);
-      if (!art.custom) { el.setAttribute("stroke", "#d8d8d8"); el.setAttribute("stroke-width", "3"); }
-      el.setAttribute("fill", painted ? art.palette[region.c].hex : "#ffffff");
+      const hex = art.palette[region.c].hex;
+      if (!art.custom) {
+        el.setAttribute("stroke", "#d8d8d8"); el.setAttribute("stroke-width", "3");
+      } else if (painted) {
+        // 사진 도안: 칠해진 칸은 경계도 같은 색 → 이음새 없이 매끈
+        el.setAttribute("stroke", hex); el.setAttribute("stroke-width", "2");
+      }
+      el.setAttribute("fill", painted ? hex : "#ffffff");
       svg.appendChild(el);
     });
     return svg;
@@ -226,9 +232,9 @@
     };
 
     const DETAIL = {
-      "쉬움": { cols: 40, minRegion: 10 },
-      "보통": { cols: 56, minRegion: 6 },
-      "자세히": { cols: 74, minRegion: 4 },
+      "쉬움": { cols: 64, minRegion: 26 },
+      "보통": { cols: 96, minRegion: 15 },
+      "자세히": { cols: 128, minRegion: 8 },
     };
 
     makeBtn.onclick = () => {

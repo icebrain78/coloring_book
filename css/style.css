@@ -174,8 +174,11 @@ button:disabled { opacity: 0.55; }
   width: 100%; height: 100%; max-width: 100vh;
   transform-origin: center center;
   display: flex; align-items: center; justify-content: center;
-  will-change: transform; /* 스크롤/확대를 GPU 레이어로 처리(수천 조각 도안 성능) */
+  /* will-change: transform 금지 — 대형 SVG가 통째로 레이어가 되면
+     고배율에서 흐릿한 텍스처만 확대되고 재래스터가 멈춘다.
+     대신 화면 밖 조각을 숨기는 컬링(engine._updateCulling)으로 해결 */
 }
+.region.cull, .region-num.cull { display: none; }
 .c-svg { width: 100%; height: 100%; display: block; }
 
 .region {

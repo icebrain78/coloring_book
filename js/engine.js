@@ -244,6 +244,55 @@
       this.svg.classList.toggle("nums-off", hide);
     }
 
+    /*
+     * 뷰포트 컬링: 확대 상태에선 화면(+여유 40%) 밖 조각을 display:none.
+     * 브라우저가 다시 그릴 대상이 수십 개로 줄어 고배율에서도
+     * 즉시 선명해지고 터치가 밀리지 않는다. 대형 도안에서만 동작.
+     */
+    _updateCulling() {
+      const n = this.art.regions.length;
+      if (n <= 1500 || !this.bboxes) return;
+      if (!this._cullState) this._cullState = new Uint8Array(n);
+      const state = this._cullState;
+
+      // 축소 상태: 컬링 해제(전부 표시)
+      if (this.scale < 2.5) {
+        if (this._culledAny) {
+          for (let i = 0; i < n; i++) {
+            if (state[i]) {
+              state[i] = 0;
+              this.regionEls[i].shape.classList.remove("cull");
+              if (this.regionEls[i].text) this.regionEls[i].text.classList.remove("cull");
+            }
+          }
+          this._culledAny = false;
+        }
+        return;
+      }
+
+      const svgR = this.svg.getBoundingClientRect();
+      const stR = this.stageEl.getBoundingClientRect();
+      if (!svgR.width || !svgR.height) return;
+      const vw = this.art.w || 1000, vh = this.art.h || 1000;
+      const sx = vw / svgR.width, sy = vh / svgR.height;
+      let x0 = (stR.left - svgR.left) * sx, x1 = (stR.right - svgR.left) * sx;
+      let y0 = (stR.top - svgR.top) * sy, y1 = (stR.bottom - svgR.top) * sy;
+      const mx = (x1 - x0) * 0.4, my = (y1 - y0) * 0.4; // 여유분(빠른 팬 대비)
+      x0 -= mx; x1 += mx; y0 -= my; y1 += my;
+
+      for (let i = 0; i < n; i++) {
+        const bb = this.bboxes[i];
+        const off = bb[2] < x0 || bb[0] > x1 || bb[3] < y0 || bb[1] > y1 ? 1 : 0;
+        if (off !== state[i]) {
+          state[i] = off;
+          const { shape, text } = this.regionEls[i];
+          shape.classList.toggle("cull", !!off);
+          if (text) text.classList.toggle("cull", !!off);
+        }
+      }
+      this._culledAny = true;
+    }
+
     /* 선택색의 남은 조각으로 화면 이동(누를 때마다 다음 조각 순환) */
     _findNext() {
       const c = this.selected;
@@ -258,12 +307,19 @@
       const wantScale = this.art.custom ? 6 : 2.2;
       if (this.scale < wantScale) this.scale = wantScale;
       this._applyTransform();
-      // 조각이 화면 중앙에 오도록 이동
-      const bb = this.regionEls[i].shape.getBoundingClientRect();
+      // 조각이 화면 중앙에 오도록 이동 — 컬링으로 숨겨져 있어도 되도록
+      // 도안 좌표(bbox)로 계산
+      const bb = this.bboxes[i];
+      const cxArt = (bb[0] + bb[2]) / 2, cyArt = (bb[1] + bb[3]) / 2;
+      const vw = this.art.w || 1000, vh = this.art.h || 1000;
+      const svgR = this.svg.getBoundingClientRect();
       const st = this.stageEl.getBoundingClientRect();
-      this.tx += st.left + st.width / 2 - (bb.left + bb.width / 2);
-      this.ty += st.top + st.height / 2 - (bb.top + bb.height / 2);
+      const px = svgR.left + (cxArt / vw) * svgR.width;
+      const py = svgR.top + (cyArt / vh) * svgR.height;
+      this.tx += st.left + st.width / 2 - px;
+      this.ty += st.top + st.height / 2 - py;
       this._applyTransform();
+      this._updateCulling(); // 목적지 조각이 바로 보이도록 즉시 컬링 갱신
       this._flash(i);
     }
 
@@ -477,10 +533,11 @@
       this.previewEl = div;
     }
 
-    /* 각 영역 중앙에 번호 텍스트 배치(영역 위에 얹음) */
+    /* 각 영역 중앙에 번호 텍스트 배치(영역 위에 얹음) + 컬링용 bbox 저장 */
     _placeNumbers() {
       const custom = !!this.art.custom;
       const numRe = /-?\d+\.?\d*/g;
+      this.bboxes = new Array(this.art.regions.length);
       this.art.regions.forEach((region, i) => {
         let w, h, px, py;
         if (region.shape === "path" && region.nx != null) {
@@ -496,11 +553,13 @@
           }
           w = maxX - minX; h = maxY - minY;
           px = region.nx; py = region.ny;
+          this.bboxes[i] = [minX, minY, maxX, maxY];
         } else {
           const bb = this.regionEls[i].shape.getBBox();
           w = bb.width; h = bb.height;
           px = region.nx != null ? region.nx : bb.x + w / 2;
           py = region.ny != null ? region.ny : bb.y + h / 2;
+          this.bboxes[i] = [bb.x, bb.y, bb.x + w, bb.y + h];
         }
         const t = document.createElementNS(SVGNS, "text");
         t.setAttribute("x", px);
@@ -638,6 +697,9 @@
           this._updateMinimapView();
         });
       }
+      // 컬링은 조작이 멈춘 뒤 한 번만(120ms 디바운스)
+      clearTimeout(this._cullTimer);
+      this._cullTimer = setTimeout(() => this._updateCulling(), 120);
     }
 
     _bindZoomPan(stage) {

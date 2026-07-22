@@ -121,6 +121,46 @@ python3 -m http.server 8099
 
 배포가 반영되면 갤러리 상단에 **"☁️ 로그인 / 회원가입"** 버튼이 나타납니다.
 
+### 도안 공유 기능용 테이블 (추가 SQL — 한 번 실행)
+
+내 사진 도안의 🔗 버튼으로 공유 링크를 만들려면 아래 SQL도 실행해두세요:
+
+```sql
+create table public.shared_art (
+  id text primary key,
+  owner uuid not null references auth.users(id) on delete cascade,
+  title text not null default '',
+  payload jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.shared_art enable row level security;
+create policy "anyone can read" on public.shared_art
+  for select using (true);
+create policy "owner can insert" on public.shared_art
+  for insert with check (auth.uid() = owner);
+create policy "owner can delete" on public.shared_art
+  for delete using (auth.uid() = owner);
+```
+
+공유 링크(`...?share=도안id`)를 받은 사람은 로그인 없이도 도안을 받아
+자기 갤러리에서 색칠할 수 있습니다.
+
+---
+
+## 안드로이드 APK 만들기 (PWABuilder — 코딩 불필요)
+
+이 앱은 PWA라서 [PWABuilder](https://www.pwabuilder.com)에 주소만 넣으면
+설치형 안드로이드 앱(APK/AAB)이 나옵니다:
+
+1. https://www.pwabuilder.com 접속
+2. 주소창에 `https://icebrain78.github.io/coloring_book/` 입력 → **Start**
+3. 점수 확인 후 **Package for Stores → Android**
+4. 옵션 기본값으로 **Download** → `.apk` 파일 생성
+5. APK를 폰에 옮겨 설치 (설정에서 "출처를 알 수 없는 앱 허용" 필요)
+   — Play 스토어에 올리려면 같은 화면의 `.aab` + 개발자 계정($25)을 사용
+
+앱 아이콘용 PNG(192/512)와 manifest는 이미 준비되어 있습니다.
+
 ---
 
 ## 5. 다음 단계 (로드맵)

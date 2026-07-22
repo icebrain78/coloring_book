@@ -298,6 +298,12 @@ button:disabled { opacity: 0.55; }
   background: rgba(0,0,0,0.45); color: #fff; border-radius: 50%;
   font-size: 13px; line-height: 1;
 }
+.g-share {
+  position: absolute; top: 8px; left: 40px; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(108,92,231,0.75); color: #fff; border-radius: 50%;
+  font-size: 12px; line-height: 1;
+}
 
 /* 사진 도안: 얇은 윤곽선(색이 많고 영역이 작아서) */
 .custom-art .region { stroke-width: 0.55; stroke: #c9ccd4; }

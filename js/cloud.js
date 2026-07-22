@@ -221,6 +221,30 @@ window.Cloud = (function () {
     await pullMerge();
   }
 
+  /* ── 도안 공유: shared_art 테이블(누구나 읽기, 본인만 등록/삭제) ── */
+  async function shareArt(art) {
+    if (!enabled || !session) throw new Error("로그인이 필요해요");
+    const id = (art.id + "-" + Date.now().toString(36)).replace(/[^a-z0-9-]/gi, "");
+    await restFetch("POST", "/shared_art", [
+      { id, owner: session.user.id, title: art.title || "컬러링", payload: art },
+    ]);
+    const base = location.origin + location.pathname;
+    return base + "?share=" + encodeURIComponent(id);
+  }
+
+  /* 공유받은 도안 가져오기 — 로그인 없이도 가능(anon 읽기) */
+  async function fetchShared(id) {
+    if (!enabled) throw new Error("클라우드 미설정");
+    const res = await fetch(
+      CFG.url + "/rest/v1/shared_art?select=title,payload&id=eq." + encodeURIComponent(id),
+      { headers: { apikey: CFG.anonKey } }
+    );
+    if (!res.ok) throw new Error("가져오기 실패 " + res.status);
+    const rows = await res.json();
+    if (!rows.length) throw new Error("공유 도안을 찾을 수 없어요(삭제됐을 수 있음)");
+    return rows[0];
+  }
+
   return {
     enabled,
     user: () => (session ? session.user : null),
@@ -228,6 +252,7 @@ window.Cloud = (function () {
     onStatus: (cb) => { statusCb = cb; },
     signup, login, logout,
     init, pullMerge, schedulePush, pushNow,
+    shareArt, fetchShared,
     mergeData, localData, writeLocal, // 백업 가져오기에서도 재사용
   };
 })();

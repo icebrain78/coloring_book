@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v1.7"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -355,6 +355,32 @@
           if (confirm("이 사진 도안을 삭제할까요?")) { deleteCustom(art.id); renderGallery(); }
         };
         thumbWrap.appendChild(del);
+        // 공유(로그인 시): 링크를 만들어 누구나 이 도안을 칠할 수 있게
+        if (Cloud.enabled && Cloud.user()) {
+          const sh = document.createElement("span");
+          sh.className = "g-share";
+          sh.textContent = "🔗";
+          sh.title = "도안 공유";
+          sh.onclick = async (e) => {
+            e.stopPropagation();
+            sh.textContent = "…";
+            try {
+              const url = await Cloud.shareArt(art);
+              if (navigator.share) {
+                try { await navigator.share({ title: art.title, url }); } catch (e2) {}
+              } else if (navigator.clipboard) {
+                await navigator.clipboard.writeText(url);
+                alert("공유 링크를 복사했어요!\n" + url);
+              } else {
+                prompt("공유 링크:", url);
+              }
+            } catch (err) {
+              alert("공유 실패: " + err.message);
+            }
+            sh.textContent = "🔗";
+          };
+          thumbWrap.appendChild(sh);
+        }
       }
 
       const meta = document.createElement("div");
@@ -649,6 +675,27 @@
   });
 
   showGallery();
+
+  // 공유 링크(?share=...)로 들어온 경우: 도안 내려받아 갤러리에 추가 후 열기
+  (function () {
+    const m = location.search.match(/[?&]share=([^&]+)/);
+    if (!m || !Cloud.enabled) return;
+    const shareId = decodeURIComponent(m[1]);
+    history.replaceState(null, "", location.pathname); // URL 정리
+    Cloud.fetchShared(shareId)
+      .then((row) => {
+        const art = row.payload;
+        art.id = "shared-" + shareId; // 내 저장소용 id (중복 수신 시 갱신)
+        art.custom = true;
+        art.title = row.title || art.title;
+        // 이미 받은 적 있으면 중복 추가 안 함
+        if (!loadCustom().some((a) => a.id === art.id)) saveCustomArt(art);
+        showGallery();
+        openArt(art);
+      })
+      .catch((e) => alert("공유 도안 가져오기 실패: " + e.message));
+  })();
+
   // 로그인돼 있으면 클라우드 내려받아 병합 후 갤러리 갱신
   let lastPull = Date.now();
   Cloud.init().then(() => {

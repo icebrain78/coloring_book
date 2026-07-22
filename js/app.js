@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.2"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v1.3"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -72,27 +72,37 @@
     el.id = "auth";
     el.className = "auth-overlay";
     el.innerHTML =
-      '<div class="auth-box">' +
+      '<form class="auth-box" novalidate>' +
       "<h2>☁️ 클라우드 동기화</h2>" +
       '<p class="auth-sub">로그인하면 도안과 진행상황이 자동 저장되고<br>다른 기기에서도 이어서 칠할 수 있어요.</p>' +
-      '<input type="email" class="auth-input" id="auth-email" placeholder="이메일" autocomplete="email">' +
-      '<input type="password" class="auth-input" id="auth-pw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">' +
+      '<input type="email" class="auth-input" id="auth-email" placeholder="이메일" autocomplete="email" inputmode="email">' +
+      '<input type="password" class="auth-input" id="auth-pw" placeholder="비밀번호 (6자 이상)" autocomplete="new-password">' +
       '<div class="auth-msg" id="auth-msg"></div>' +
-      '<button class="o-btn primary" id="auth-login">로그인</button>' +
-      '<button class="o-btn" id="auth-signup">회원가입</button>' +
-      '<button class="auth-close" id="auth-close">닫기</button>' +
-      "</div>";
+      '<button type="submit" class="o-btn primary" id="auth-login">로그인</button>' +
+      '<button type="button" class="o-btn" id="auth-signup">회원가입</button>' +
+      '<button type="button" class="auth-close" id="auth-close">닫기</button>' +
+      "</form>";
     document.body.appendChild(el);
     const msg = el.querySelector("#auth-msg");
-    const busy = (b) => el.querySelectorAll("button").forEach((x) => (x.disabled = b));
-    const run = async (fn, okText) => {
+    const loginBtn = el.querySelector("#auth-login");
+    const signupBtn = el.querySelector("#auth-signup");
+    let running = false;
+    const run = async (fn, btn, doingText, okText) => {
+      if (running) return;
       const email = el.querySelector("#auth-email").value.trim();
       const pw = el.querySelector("#auth-pw").value;
-      if (!email || pw.length < 6) { msg.textContent = "이메일과 6자 이상 비밀번호를 입력해주세요"; return; }
-      busy(true); msg.textContent = "잠시만요…";
+      msg.className = "auth-msg";
+      if (!email || !email.includes("@")) { msg.textContent = "이메일을 입력해주세요"; return; }
+      if (pw.length < 6) { msg.textContent = "비밀번호는 6자 이상이어야 해요"; return; }
+      running = true;
+      const orig = btn.textContent;
+      btn.textContent = doingText;
+      loginBtn.disabled = signupBtn.disabled = true;
+      msg.textContent = "서버에 연결하는 중…";
       try {
         const r = await fn(email, pw);
         if (r && r.needConfirm) {
+          msg.className = "auth-msg ok";
           msg.textContent = "가입 완료! 이메일의 확인 링크를 누른 뒤 로그인해주세요.";
         } else {
           el.classList.add("hidden");
@@ -100,12 +110,24 @@
           if (okText) alert(okText);
         }
       } catch (e) {
-        msg.textContent = e.message === "Invalid login credentials" ? "이메일 또는 비밀번호가 달라요" : e.message;
+        const m = (e && e.message) || "알 수 없는 오류";
+        msg.textContent =
+          m === "Invalid login credentials" ? "이메일 또는 비밀번호가 달라요" :
+          m === "User already registered" ? "이미 가입된 이메일이에요 — 로그인을 눌러주세요" :
+          m === "Failed to fetch" || m === "Load failed" ? "서버 연결 실패 — 인터넷 연결을 확인해주세요" :
+          m;
+      } finally {
+        running = false;
+        btn.textContent = orig;
+        loginBtn.disabled = signupBtn.disabled = false;
       }
-      busy(false);
     };
-    el.querySelector("#auth-login").onclick = () => run(Cloud.login, "로그인 완료! 동기화가 켜졌어요 ☁️");
-    el.querySelector("#auth-signup").onclick = () => run(Cloud.signup, "가입 완료! 동기화가 켜졌어요 ☁️");
+    el.querySelector("form").onsubmit = (e) => {
+      e.preventDefault();
+      run(Cloud.login, loginBtn, "로그인 중…", "로그인 완료! 동기화가 켜졌어요 ☁️");
+    };
+    signupBtn.onclick = () =>
+      run(Cloud.signup, signupBtn, "가입 중…", "가입 완료! 동기화가 켜졌어요 ☁️");
     el.querySelector("#auth-close").onclick = () => el.classList.add("hidden");
   }
 

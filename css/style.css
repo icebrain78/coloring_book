@@ -62,7 +62,9 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   font-size: 15px; font-family: inherit; outline: none;
 }
 .auth-input:focus { border-color: var(--brand); }
-.auth-msg { min-height: 18px; font-size: 13px; color: #e05252; text-align: center; }
+.auth-msg { min-height: 20px; font-size: 14px; font-weight: 600; color: #e05252; text-align: center; }
+.auth-msg.ok { color: #2e9e5b; }
+button:disabled { opacity: 0.55; }
 .auth-close { padding: 8px; color: var(--muted); font-size: 14px; }
 
 .g-grid {

@@ -118,11 +118,17 @@
       title.textContent = art.title;
       this.progressEl = document.createElement("div");
       this.progressEl.className = "c-progress";
-      top.append(back, title, this.progressEl);
+      const previewBtn = document.createElement("button");
+      previewBtn.className = "c-preview-btn";
+      previewBtn.textContent = "완성본";
+      previewBtn.onclick = () => this._togglePreview();
+      top.append(back, title, previewBtn, this.progressEl);
 
       /* 캔버스 영역(줌 무대) */
       const stage = document.createElement("div");
       stage.className = "c-stage";
+      this.stageEl = stage;
+      this.previewEl = null;
       const viewport = document.createElement("div");
       viewport.className = "c-viewport";
       const svg = document.createElementNS(SVGNS, "svg");
@@ -169,10 +175,140 @@
 
       // SVG가 DOM에 붙은 뒤에야 getBBox가 실제 크기를 반환 → 번호는 지금 배치
       this._placeNumbers();
+      this._buildMinimap(stage);
       this._applyFilledState();
       this._select(this._firstUnfinishedColor());
       this._updateProgress();
       this._bindZoomPan(stage);
+    }
+
+    /* ── 캔버스에 영역 하나를 그리는 헬퍼(미니맵·완성본 미리보기 공용) ── */
+    _drawRegionOnCtx(ctx, region, color) {
+      ctx.fillStyle = color;
+      switch (region.shape) {
+        case "path":
+          ctx.fill(new Path2D(region.d));
+          break;
+        case "rect":
+          ctx.fillRect(region.x, region.y, region.w, region.h);
+          break;
+        case "circle":
+          ctx.beginPath();
+          ctx.arc(region.cx, region.cy, region.r, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case "ellipse":
+          ctx.beginPath();
+          ctx.ellipse(region.cx, region.cy, region.rx, region.ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case "polygon": {
+          const pts = region.points.split(" ").map((s) => s.split(",").map(Number));
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
+      }
+    }
+
+    /* ── 미니맵: 전체 그림 축소판 + 현재 보이는 위치 표시, 탭하면 이동 ── */
+    _buildMinimap(stage) {
+      const art = this.art;
+      const vw = art.w || 1000, vh = art.h || 1000;
+      const wrap = document.createElement("div");
+      wrap.className = "c-minimap";
+      const cvs = document.createElement("canvas");
+      const MW = 220; // 내부 해상도
+      cvs.width = MW;
+      cvs.height = Math.round((MW * vh) / vw);
+      const view = document.createElement("div");
+      view.className = "c-minimap-view";
+      wrap.append(cvs, view);
+      stage.appendChild(wrap);
+
+      const ctx = cvs.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cvs.width, cvs.height);
+      ctx.setTransform(MW / vw, 0, 0, MW / vw, 0, 0);
+      this.minimap = { wrap, cvs, view, ctx };
+
+      // 미니맵 조작이 화면 이동/색칠로 번지지 않게 차단
+      wrap.addEventListener("pointerdown", (e) => e.stopPropagation());
+      wrap.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._minimapJump(e);
+      });
+      this._updateMinimapView();
+    }
+
+    /* 미니맵 위 현재 화면 위치 사각형 갱신 */
+    _updateMinimapView() {
+      if (!this.minimap) return;
+      const stageR = this.stageEl.getBoundingClientRect();
+      const svgR = this.svg.getBoundingClientRect();
+      if (!svgR.width || !svgR.height) return;
+      const clamp01 = (v) => Math.max(0, Math.min(1, v));
+      const x0 = clamp01((stageR.left - svgR.left) / svgR.width);
+      const y0 = clamp01((stageR.top - svgR.top) / svgR.height);
+      const x1 = clamp01((stageR.right - svgR.left) / svgR.width);
+      const y1 = clamp01((stageR.bottom - svgR.top) / svgR.height);
+      const s = this.minimap.view.style;
+      s.left = (x0 * 100).toFixed(2) + "%";
+      s.top = (y0 * 100).toFixed(2) + "%";
+      s.width = ((x1 - x0) * 100).toFixed(2) + "%";
+      s.height = ((y1 - y0) * 100).toFixed(2) + "%";
+    }
+
+    /* 미니맵 탭 → 그 지점이 화면 중앙에 오도록 이동 */
+    _minimapJump(e) {
+      const r = this.minimap.cvs.getBoundingClientRect();
+      const fx = (e.clientX - r.left) / r.width;
+      const fy = (e.clientY - r.top) / r.height;
+      const svgR = this.svg.getBoundingClientRect();
+      const stageR = this.stageEl.getBoundingClientRect();
+      const px = svgR.left + fx * svgR.width;
+      const py = svgR.top + fy * svgR.height;
+      this.tx += stageR.left + stageR.width / 2 - px;
+      this.ty += stageR.top + stageR.height / 2 - py;
+      this._applyTransform();
+    }
+
+    /* ── 완성본 미리보기 토글 ── */
+    _togglePreview() {
+      if (this.previewEl) {
+        this.previewEl.remove();
+        this.previewEl = null;
+        return;
+      }
+      const art = this.art;
+      const vw = art.w || 1000, vh = art.h || 1000;
+      // 완성본은 도안당 한 번만 렌더해서 재사용
+      if (!this._previewCanvas || this._previewCanvasFor !== art.id) {
+        const cvs = document.createElement("canvas");
+        const W = 1400;
+        cvs.width = W;
+        cvs.height = Math.round((W * vh) / vw);
+        const ctx = cvs.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, cvs.width, cvs.height);
+        ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
+        art.regions.forEach((r) => this._drawRegionOnCtx(ctx, r, art.palette[r.c].hex));
+        this._previewCanvas = cvs;
+        this._previewCanvasFor = art.id;
+      }
+      const div = document.createElement("div");
+      div.className = "c-preview";
+      const label = document.createElement("div");
+      label.className = "c-preview-label";
+      label.textContent = "완성본 미리보기 · 탭하면 닫혀요";
+      div.append(this._previewCanvas, label);
+      div.addEventListener("pointerdown", (e) => e.stopPropagation());
+      div.onclick = () => this._togglePreview();
+      this.stageEl.appendChild(div);
+      this.previewEl = div;
     }
 
     /* 각 영역 중앙에 번호 텍스트 배치(영역 위에 얹음) */
@@ -249,6 +385,8 @@
       shape.style.fill = hex;
       // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈
       if (this.art.custom) shape.style.stroke = hex;
+      // 미니맵에도 칠하기
+      if (this.minimap) this._drawRegionOnCtx(this.minimap.ctx, region, hex);
       shape.classList.add("filled");
       shape.classList.remove("target");
       if (animate) shape.classList.add("pop");
@@ -286,6 +424,14 @@
     _applyTransform() {
       this.viewport.style.transform =
         `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`;
+      // 미니맵 위치 사각형은 프레임당 1회만 갱신(레이아웃 읽기 절약)
+      if (!this._mmPending) {
+        this._mmPending = true;
+        requestAnimationFrame(() => {
+          this._mmPending = false;
+          this._updateMinimapView();
+        });
+      }
     }
 
     _bindZoomPan(stage) {

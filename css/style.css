@@ -68,6 +68,38 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .c-progress {
   min-width: 52px; text-align: right; font-weight: 700; color: var(--brand); font-size: 15px;
 }
+.c-preview-btn {
+  font-weight: 700; font-size: 13px; color: var(--brand);
+  background: #efecfd; padding: 7px 10px; border-radius: 10px;
+}
+
+/* ── 미니맵 ── */
+.c-minimap {
+  position: absolute; top: 10px; right: 10px; width: 108px;
+  background: #fff; border-radius: 10px; overflow: hidden;
+  box-shadow: var(--shadow); border: 1px solid var(--line);
+  z-index: 5; line-height: 0;
+}
+.c-minimap canvas { width: 100%; display: block; }
+.c-minimap-view {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid var(--brand); border-radius: 2px;
+  background: rgba(108, 92, 231, 0.08); pointer-events: none;
+}
+
+/* ── 완성본 미리보기 ── */
+.c-preview {
+  position: absolute; inset: 0; z-index: 6;
+  background: rgba(250, 250, 251, 0.98);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  padding: 16px;
+}
+.c-preview canvas {
+  max-width: 100%; max-height: 84%; width: auto; height: auto;
+  border-radius: 10px; box-shadow: var(--shadow);
+}
+.c-preview-label { font-size: 13px; color: var(--muted); font-weight: 600; }
 
 .c-stage {
   flex: 1; overflow: hidden; position: relative;

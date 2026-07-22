@@ -467,50 +467,79 @@
       g.lineCap = "round";
 
       if (kind === "water") {
-        // 수채: 부드러운 얼룩(가장자리 살짝 진하게) + 종이 알갱이
-        for (let k = 0; k < 12; k++) {
-          const x = rnd() * S, y = rnd() * S, r = 20 + rnd() * 42;
-          const light = rnd() > 0.45;
-          const a = 0.045 + rnd() * 0.05;
-          const m = r + 3;
+        // 수채: 유기적인 워시(얼룩)를 여러 겹 + 가장자리 물고임 + 과립
+        for (let k = 0; k < 11; k++) {
+          const x = rnd() * S, y = rnd() * S, r0 = 24 + rnd() * 42;
+          const light = rnd() > 0.42;
+          const a = 0.05 + rnd() * 0.06;
+          // 울퉁불퉁한 닫힌 곡선(점을 미리 뽑아 랩 복사가 똑같게)
+          const n = 14, pts = [];
+          let rad = r0 * (0.75 + rnd() * 0.4);
+          for (let i = 0; i < n; i++) {
+            rad += (rnd() - 0.5) * r0 * 0.38;
+            rad = Math.max(r0 * 0.45, Math.min(r0 * 1.3, rad));
+            const t = (i / n) * Math.PI * 2;
+            pts.push([x + Math.cos(t) * rad, y + Math.sin(t) * rad]);
+          }
+          const m = r0 * 1.4 + 4;
           wrapped(() => {
-            const grad = g.createRadialGradient(x, y, 0, x, y, r);
-            grad.addColorStop(0, light ? lightC(a) : darkC(a * 0.9));
-            grad.addColorStop(0.8, light ? lightC(a * 0.4) : darkC(a * 0.35));
-            grad.addColorStop(1, "rgba(0,0,0,0)");
-            g.fillStyle = grad;
             g.beginPath();
-            g.arc(x, y, r, 0, Math.PI * 2);
+            g.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
+            for (let i = 0; i < n; i++) {
+              const q = pts[i], nx2 = pts[(i + 1) % n];
+              g.quadraticCurveTo(q[0], q[1], (q[0] + nx2[0]) / 2, (q[1] + nx2[1]) / 2);
+            }
+            g.closePath();
+            g.fillStyle = light ? lightC(a) : darkC(a * 0.9);
             g.fill();
-            // 워터마크 가장자리
-            g.strokeStyle = darkC(a * 0.5);
-            g.lineWidth = 1.2;
-            g.beginPath();
-            g.arc(x, y, r * (0.85 + rnd() * 0.1), 0, Math.PI * 2);
+            // 가장자리 물고임(살짝 진한 테)
+            g.strokeStyle = darkC(a * 0.6);
+            g.lineWidth = 1.3;
             g.stroke();
           }, x - m, y - m, x + m, y + m);
         }
-        for (let k = 0; k < 170; k++) {
+        // 과립(물감 알갱이) — 수채 특유의 자글자글함
+        for (let k = 0; k < 260; k++) {
           const x = rnd() * S, y = rnd() * S;
-          const light = rnd() > 0.5;
-          const a = 0.02 + rnd() * 0.035;
+          const light = rnd() > 0.55;
+          const a = 0.02 + rnd() * 0.045;
+          const sz = 1 + rnd() * 1.6;
           wrapped(() => {
             g.fillStyle = light ? lightC(a) : darkC(a);
-            g.fillRect(x, y, 1.4, 1.4);
-          }, x, y, x + 2, y + 2);
+            g.fillRect(x, y, sz, sz);
+          }, x, y, x + 3, y + 3);
         }
       } else if (kind === "crayon") {
-        // 크레용: 종이 알갱이 위로 긁힌 왁스 결
-        const ang = [0.5, -0.4, 1.1][v % 3] + (rnd() - 0.5) * 0.2;
+        // 크레용: 왁스 알갱이 자글자글 + 종이 결이 비치는 밝은 띠
+        const ang = [0.5, -0.4, 1.1][v % 3] + (rnd() - 0.5) * 0.15;
         const dx = Math.cos(ang), dy = Math.sin(ang);
-        for (let k = 0; k < 110; k++) {
+        // 종이가 비치는 밝은 띠(획 사이 틈)
+        for (let k = 0; k < 8; k++) {
           const x = rnd() * S, y = rnd() * S;
-          const len = 5 + rnd() * 16;
-          const j = (rnd() - 0.5) * 0.5; // 방향 흔들림
+          const len = S * (0.7 + rnd() * 0.8);
+          const w = 2.5 + rnd() * 6;
+          const a = 0.1 + rnd() * 0.13;
+          const ex = x + dx * len, ey = y + dy * len;
+          const m = w + 2;
+          wrapped(() => {
+            g.strokeStyle = lightC(a);
+            g.lineWidth = w;
+            g.lineCap = "round";
+            g.beginPath();
+            g.moveTo(x, y);
+            g.lineTo(ex, ey);
+            g.stroke();
+          }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
+        }
+        // 왁스 스페클: 방향성이 있는 짧은 점·선 수백 개(거친 알갱이)
+        for (let k = 0; k < 520; k++) {
+          const x = rnd() * S, y = rnd() * S;
+          const j = (rnd() - 0.5) * 0.8;
           const ddx = Math.cos(ang + j), ddy = Math.sin(ang + j);
-          const light = rnd() > 0.42;
-          const a = 0.05 + rnd() * 0.09;
-          const w = 0.8 + rnd() * 1.6;
+          const len = 1 + rnd() * 3.2;
+          const light = rnd() > 0.62;
+          const a = light ? 0.09 + rnd() * 0.13 : 0.05 + rnd() * 0.1;
+          const w = 0.7 + rnd() * 1.3;
           const ex = x + ddx * len, ey = y + ddy * len;
           wrapped(() => {
             g.strokeStyle = light ? lightC(a) : darkC(a);
@@ -519,61 +548,124 @@
             g.moveTo(x, y);
             g.lineTo(ex, ey);
             g.stroke();
-          }, Math.min(x, ex) - w - 1, Math.min(y, ey) - w - 1, Math.max(x, ex) + w + 1, Math.max(y, ey) + w + 1);
-        }
-        for (let k = 0; k < 90; k++) {
-          const x = rnd() * S, y = rnd() * S;
-          const light = rnd() > 0.5;
-          const a = 0.03 + rnd() * 0.05;
-          wrapped(() => {
-            g.fillStyle = light ? lightC(a) : darkC(a);
-            g.fillRect(x, y, 1.6, 1.6);
-          }, x, y, x + 2, y + 2);
+          }, Math.min(x, ex) - 2, Math.min(y, ey) - 2, Math.max(x, ex) + 2, Math.max(y, ey) + 2);
         }
       } else {
-        // 유화: 조밀하게 겹치는 곡선 획 + 임파스토(밝은 윗날/어두운 아랫날)
+        // 유화(임파스토): 획을 '물감 두께'(높이맵)로 쌓고 빛을 비춰
+        // 이랑마다 하이라이트·그림자·광택을 계산 → 두껍게 바른 질감
         const baseAng = [0.35, -0.65, 1.25][v % 3];
-        for (let k = 0; k < 44; k++) {
+
+        // 1) 높이맵 캔버스(회색=평지, 밝음=두껍게 솟음, 어두움=긁힘)
+        const hC = document.createElement("canvas");
+        hC.width = S; hC.height = S;
+        const hg = hC.getContext("2d");
+        hg.fillStyle = "#808080";
+        hg.fillRect(0, 0, S, S);
+        hg.lineCap = "round";
+        const wrapOn = (ctx2, draw, x0, y0, x1, y1) => {
+          for (let ox = -1; ox <= 1; ox++) {
+            for (let oy = -1; oy <= 1; oy++) {
+              if (x1 + ox * S < 0 || x0 + ox * S > S || y1 + oy * S < 0 || y0 + oy * S > S) continue;
+              ctx2.save();
+              ctx2.translate(ox * S, oy * S);
+              draw(ctx2);
+              ctx2.restore();
+            }
+          }
+        };
+
+        // 2) 굵은 나이프/붓 획: 높이맵(도톰한 단면) + 색 스트릭을 같은 궤적으로
+        for (let k = 0; k < 30; k++) {
           const x = rnd() * S, y = rnd() * S;
-          const ang = baseAng + (rnd() - 0.5) * 0.55;
+          const ang = baseAng + (rnd() - 0.5) * 0.6;
           const dx = Math.cos(ang), dy = Math.sin(ang);
-          const px = -dy, py = dx; // 획의 수직 방향(날 오프셋용)
-          const len = 26 + rnd() * 64;
-          const bow = (rnd() - 0.5) * 18; // 곡률
-          const w = 3.5 + rnd() * 8;
-          const a = 0.035 + rnd() * 0.055;
-          const off = w * 0.28;
-          const strokePath = (sx, sy) => {
-            g.beginPath();
-            g.moveTo(x + sx, y + sy);
-            g.quadraticCurveTo(
-              x + dx * len * 0.5 + px * bow + sx,
-              y + dy * len * 0.5 + py * bow + sy,
-              x + dx * len + sx,
-              y + dy * len + sy
-            );
-            g.stroke();
-          };
+          const px = -dy, py = dx;
+          const len = 34 + rnd() * 78;
+          const bow = (rnd() - 0.5) * 22;
+          const w = 9 + rnd() * 16;
+          const carve = rnd() < 0.22; // 일부는 긁어낸 자국
+          const hA = 0.16 + rnd() * 0.2;
           const ex = x + dx * len, ey = y + dy * len;
-          const m = w + Math.abs(bow) + off + 3;
-          wrapped(() => {
-            g.lineWidth = w;
-            g.strokeStyle = darkC(a);            // 아랫날(그림자)
-            strokePath(px * off, py * off);
-            g.strokeStyle = lightC(a * 1.05);    // 윗날(하이라이트)
-            strokePath(-px * off, -py * off);
+          const m = w + Math.abs(bow) + 4;
+          const path = (c) => {
+            c.beginPath();
+            c.moveTo(x, y);
+            c.quadraticCurveTo(x + dx * len * 0.5 + px * bow, y + dy * len * 0.5 + py * bow, ex, ey);
+            c.stroke();
+          };
+          // 높이: 넓고 연하게 → 좁고 진하게 3겹(둥근 이랑 단면)
+          wrapOn(hg, (c) => {
+            const tone = carve ? "0,0,0" : "255,255,255";
+            c.strokeStyle = "rgba(" + tone + "," + (hA * 0.35).toFixed(3) + ")";
+            c.lineWidth = w;
+            path(c);
+            c.strokeStyle = "rgba(" + tone + "," + (hA * 0.55).toFixed(3) + ")";
+            c.lineWidth = w * 0.62;
+            path(c);
+            c.strokeStyle = "rgba(" + tone + "," + hA.toFixed(3) + ")";
+            c.lineWidth = w * 0.3;
+            path(c);
+          }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
+          // 색: 물감이 덜 섞인 듯한 밝은/어두운 스트릭
+          const light = rnd() > 0.5;
+          const cA = 0.05 + rnd() * 0.09;
+          wrapOn(g, (c) => {
+            c.lineCap = "round";
+            c.strokeStyle = light ? lightC(cA) : darkC(cA);
+            c.lineWidth = w * 0.8;
+            path(c);
           }, Math.min(x, ex) - m, Math.min(y, ey) - m, Math.max(x, ex) + m, Math.max(y, ey) + m);
         }
-        // 미세 알갱이(캔버스 결)
-        for (let k = 0; k < 70; k++) {
+        // 물감 방울(뭉친 곳)
+        for (let k = 0; k < 8; k++) {
+          const x = rnd() * S, y = rnd() * S, r = 2.5 + rnd() * 5;
+          wrapOn(hg, (c) => {
+            const grad = c.createRadialGradient(x, y, 0, x, y, r);
+            grad.addColorStop(0, "rgba(255,255,255,0.5)");
+            grad.addColorStop(1, "rgba(255,255,255,0)");
+            c.fillStyle = grad;
+            c.beginPath();
+            c.arc(x, y, r, 0, Math.PI * 2);
+            c.fill();
+          }, x - r - 2, y - r - 2, x + r + 2, y + r + 2);
+        }
+        // 캔버스 알갱이(미세 요철)
+        for (let k = 0; k < 240; k++) {
           const x = rnd() * S, y = rnd() * S;
-          const light = rnd() > 0.5;
-          const a = 0.02 + rnd() * 0.03;
-          wrapped(() => {
-            g.fillStyle = light ? lightC(a) : darkC(a);
-            g.fillRect(x, y, 1.5, 1.5);
+          const up = rnd() > 0.5;
+          wrapOn(hg, (c) => {
+            c.fillStyle = "rgba(" + (up ? "255,255,255" : "0,0,0") + "," + (0.03 + rnd() * 0.05).toFixed(3) + ")";
+            c.fillRect(x, y, 1.6, 1.6);
           }, x, y, x + 2, y + 2);
         }
+
+        // 3) 조명 계산: 높이 기울기 → 명암 + 광택(왼쪽 위 광원)
+        const hd = hg.getImageData(0, 0, S, S).data;
+        const img = g.getImageData(0, 0, S, S);
+        const d = img.data;
+        const H = (x, y) => hd[(((y + S) % S) * S + ((x + S) % S)) * 4]; // 랩 → 이음새 없음
+        const LX = -0.62, LY = -0.62, LZ = 0.48;
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            const gx = (H(x + 1, y) - H(x - 1, y)) / 255;
+            const gy = (H(x, y + 1) - H(x, y - 1)) / 255;
+            const nx = -gx * 2.4, ny = -gy * 2.4;
+            const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+            const rel = (nx * LX + ny * LY + LZ) * inv - LZ; // 굴곡에 의한 증감
+            let shade = 1 + rel * 2.1;
+            if (shade < 0.52) shade = 0.52;
+            else if (shade > 1.55) shade = 1.55;
+            const spec = (rel > 0 ? rel * rel : 0) * 300; // 물감 광택
+            const p = (y * S + x) * 4;
+            let sr = d[p] * shade + spec;
+            let sg2 = d[p + 1] * shade + spec;
+            let sb = d[p + 2] * shade + spec * 0.92;
+            d[p] = sr > 255 ? 255 : sr;
+            d[p + 1] = sg2 > 255 ? 255 : sg2;
+            d[p + 2] = sb > 255 ? 255 : sb;
+          }
+        }
+        g.putImageData(img, 0, 0);
       }
       ColoringEngine._tiles[key] = cvs;
       return cvs;
@@ -909,9 +1001,30 @@
       });
     }
 
-    /* 저장된 채움 상태 반영 */
+    /* 저장된 채움 상태 반영 — 일단 단색으로 즉시 채우고,
+       질감(타일 생성이 무거움)은 유휴 시간에 점진 적용 → 열기 빠름 */
     _applyFilledState() {
+      this._restoring = true;
       this.filled.forEach((i) => this._paint(i, false));
+      this._restoring = false;
+      if (!this.art.custom) return;
+      const artRef = this.art;
+      const queue = [...this.filled];
+      const idle = window.requestIdleCallback || requestAnimationFrame;
+      const step = () => {
+        if (this.art !== artRef) return; // 다른 도안으로 이동함
+        const t0 = performance.now();
+        while (queue.length && performance.now() - t0 < 12) {
+          const i = queue.shift();
+          const { shape, region } = this.regionEls[i];
+          const kind = (this.brushMap && this.brushMap[i]) || this._brushKind();
+          if (kind !== "flat") {
+            shape.style.fill = this._svgBrushFill(region.c, this._variantOf(i), kind);
+          }
+        }
+        if (queue.length) idle(step);
+      };
+      if (queue.length) idle(step);
     }
 
     _firstUnfinishedColor() {
@@ -981,7 +1094,7 @@
       // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
       const hex = this.art.palette[region.c].hex;
       const kind = (this.brushMap && this.brushMap[i]) || this._brushKind();
-      shape.style.fill = kind === "flat"
+      shape.style.fill = this._restoring || kind === "flat"
         ? hex
         : this._svgBrushFill(region.c, this._variantOf(i), kind);
       // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈

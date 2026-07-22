@@ -3,11 +3,12 @@
  * 사진 → 넘버링 색칠 도안 변환기 (전부 브라우저 안에서 처리, 서버 X)
  *
  *  1) 사진을 cols×rows 격자로 축소 (drawImage 다운스케일 = 셀 평균색)
- *  2) k-means 색 양자화 (20~32색)
- *  3) 모드 필터로 잡티 제거
- *  4) 같은 색 셀 연결(connected components) → 영역
- *  5) 작은 영역을 이웃에 병합
- *  6) 각 영역 윤곽선을 SVG path(d)로 추적 + 번호 위치(무게중심) 계산
+ *  2) 선명화(unsharp)로 이목구비 대비 강화
+ *  3) Lab 색공간에서 k-means 양자화 (사람 눈 기준 색 분리)
+ *  4) 모드 필터로 잡티 제거
+ *  5) 같은 색 셀 연결(connected components) → 영역
+ *  6) 작은 영역 병합 — 단, 주변과 색 대비가 큰 작은 영역(눈·입술 등)은 보존
+ *  7) 각 영역 윤곽선을 곡선 path로 추적 + 번호 위치 계산
  *  → 기존 엔진과 같은 artwork 형식으로 반환
  */
 window.PhotoConverter = (function () {
@@ -20,6 +21,45 @@ window.PhotoConverter = (function () {
     return "#" + h(c[0]) + h(c[1]) + h(c[2]);
   }
   function luminance(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
+
+  /* ── sRGB → Lab (지각적으로 균일한 색공간) ── */
+  function rgb2lab(c) {
+    let r = c[0] / 255, g = c[1] / 255, b = c[2] / 255;
+    const f = (v) => (v > 0.04045 ? Math.pow((v + 0.055) / 1.055, 2.4) : v / 12.92);
+    r = f(r); g = f(g); b = f(b);
+    let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+    let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    const t = (v) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116);
+    x = t(x); y = t(y); z = t(z);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+  }
+
+  /* ── 언샤프 마스크: 3×3 블러 대비 강조 (이목구비 뭉개짐 방지) ── */
+  function unsharp(cells, cols, rows, amount) {
+    const out = new Array(cells.length);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        let sr = 0, sg = 0, sb = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+            const c = cells[ny * cols + nx];
+            sr += c[0]; sg += c[1]; sb += c[2]; n++;
+          }
+        }
+        const c = cells[y * cols + x];
+        const clamp = (v) => Math.max(0, Math.min(255, v));
+        out[y * cols + x] = [
+          clamp(c[0] + amount * (c[0] - sr / n)),
+          clamp(c[1] + amount * (c[1] - sg / n)),
+          clamp(c[2] + amount * (c[2] - sb / n)),
+        ];
+      }
+    }
+    return out;
+  }
 
   /* ── k-means (k-means++ 초기화) ── */
   function kmeans(cells, K, iters) {
@@ -115,8 +155,13 @@ window.PhotoConverter = (function () {
     return { list, comp };
   }
 
-  /* ── 작은 영역을 이웃 색으로 병합 ── */
-  function mergeSmall(grid, cols, rows, minRegion) {
+  /*
+   * ── 작은 영역을 이웃 색으로 병합 ──
+   * 단, "작지만 주변과 색 대비가 뚜렷한" 영역(눈동자·눈썹·입술 라인 등)은
+   * 지우면 그림이 뭉개지므로 3칸 이상이면 병합하지 않고 보존한다.
+   */
+  function mergeSmall(grid, cols, rows, minRegion, labCentroids) {
+    const KEEP_CONTRAST = 17; // Lab 색차. 이보다 크면 '뚜렷이 다른 색'
     grid = grid.slice();
     for (let pass = 0; pass < 8; pass++) {
       const { list, comp } = components(grid, cols, rows);
@@ -128,6 +173,7 @@ window.PhotoConverter = (function () {
       let changed = false;
       for (const o of small) {
         const cells = list[o.i].cells;
+        const myLabel = list[o.i].label;
         const counts = {};
         for (const p of cells) {
           const x = p % cols, y = (p / cols) | 0;
@@ -144,15 +190,22 @@ window.PhotoConverter = (function () {
         }
         let bestLab = null, bestc = -1;
         for (const k in counts) if (counts[k] > bestc) { bestc = counts[k]; bestLab = +k; }
-        if (bestLab !== null) { for (const p of cells) grid[p] = bestLab; changed = true; }
+        if (bestLab === null) continue;
+        // 대비 보존: 3칸 이상 + 이웃과 색차가 크면 그대로 둔다
+        if (o.size >= 3 && labCentroids) {
+          const dd = Math.sqrt(dist2(labCentroids[myLabel], labCentroids[bestLab]));
+          if (dd > KEEP_CONTRAST) continue;
+        }
+        for (const p of cells) grid[p] = bestLab;
+        changed = true;
       }
       if (!changed) break;
     }
     return grid;
   }
 
-  /* ── 한 영역의 윤곽선 → path d 문자열 ── */
-  function tracePath(comp, id, cols, rows, cw, ch) {
+  /* ── 한 영역의 윤곽선 → path d 문자열 (영역 셀만 순회) ── */
+  function tracePath(comp, id, cellsOf, cols, rows, cw, ch) {
     const inC = (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && comp[y * cols + x] === id;
     const edges = new Map(); // "x,y" → [[x2,y2], ...]
     const add = (x1, y1, x2, y2) => {
@@ -160,14 +213,12 @@ window.PhotoConverter = (function () {
       if (!edges.has(k)) edges.set(k, []);
       edges.get(k).push([x2, y2]);
     };
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        if (comp[y * cols + x] !== id) continue;
-        if (!inC(x, y - 1)) add(x, y, x + 1, y);         // 위
-        if (!inC(x + 1, y)) add(x + 1, y, x + 1, y + 1); // 오른쪽
-        if (!inC(x, y + 1)) add(x + 1, y + 1, x, y + 1); // 아래
-        if (!inC(x - 1, y)) add(x, y + 1, x, y);         // 왼쪽
-      }
+    for (const p of cellsOf) {
+      const x = p % cols, y = (p / cols) | 0;
+      if (!inC(x, y - 1)) add(x, y, x + 1, y);         // 위
+      if (!inC(x + 1, y)) add(x + 1, y, x + 1, y + 1); // 오른쪽
+      if (!inC(x, y + 1)) add(x + 1, y + 1, x, y + 1); // 아래
+      if (!inC(x - 1, y)) add(x, y + 1, x, y);         // 왼쪽
     }
     const loops = [];
     for (const [startKey, arr] of edges) {
@@ -256,26 +307,40 @@ window.PhotoConverter = (function () {
     ctx.drawImage(img, 0, 0, cols, rows);
     const data = ctx.getImageData(0, 0, cols, rows).data;
     const N = cols * rows;
-    const cells = new Array(N);
+    let cells = new Array(N);
     for (let i = 0; i < N; i++) cells[i] = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
 
-    // 2) 양자화
-    const { labels, centroids } = kmeans(cells, K, 14);
+    // 2) 선명화(이목구비·붓터치 대비 강화) → 3) Lab 공간에서 양자화
+    cells = unsharp(cells, cols, rows, 0.7);
+    const labCells = cells.map(rgb2lab);
+    const { labels, centroids } = kmeans(labCells, K, 12);
 
-    // 3) 잡티 제거 → 4) 작은 영역 병합
+    // 4) 잡티 제거 → 5) 작은 영역 병합(고대비 조각은 보존)
     let grid = modeFilter(labels, cols, rows);
-    grid = mergeSmall(grid, cols, rows, minRegion);
+    grid = mergeSmall(grid, cols, rows, minRegion, centroids);
 
-    // 5) 최종 연결 요소
+    // 6) 최종 연결 요소
     const { list, comp } = components(grid, cols, rows);
 
-    // 6) 사용된 색만 팔레트로 remap (밝기순 정렬)
+    // 7) 사용된 색만 팔레트로 remap (해당 라벨 셀들의 평균 RGB, 밝기순 정렬)
     const usedLabels = [...new Set(list.map((c) => c.label))];
-    usedLabels.sort((a, b) => luminance(centroids[a]) - luminance(centroids[b]));
+    const rgbSum = {};
+    for (let i = 0; i < N; i++) {
+      const lab = grid[i];
+      if (!rgbSum[lab]) rgbSum[lab] = [0, 0, 0, 0];
+      const s = rgbSum[lab], c = cells[i];
+      s[0] += c[0]; s[1] += c[1]; s[2] += c[2]; s[3]++;
+    }
+    const avgRGB = {};
+    usedLabels.forEach((lab) => {
+      const s = rgbSum[lab] || [128, 128, 128, 1];
+      avgRGB[lab] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
+    });
+    usedLabels.sort((a, b) => luminance(avgRGB[a]) - luminance(avgRGB[b]));
     const labelToIdx = {};
     const palette = usedLabels.map((lab, idx) => {
       labelToIdx[lab] = idx;
-      return { hex: toHex(centroids[lab]), name: "색 " + (idx + 1) };
+      return { hex: toHex(avgRGB[lab]), name: "색 " + (idx + 1) };
     });
 
     // 7) 영역 → path + 번호 위치
@@ -284,7 +349,7 @@ window.PhotoConverter = (function () {
     const regions = [];
     for (let id = 0; id < list.length; id++) {
       const cellsOf = list[id].cells;
-      const d = tracePath(comp, id, cols, rows, cw, ch);
+      const d = tracePath(comp, id, cellsOf, cols, rows, cw, ch);
       if (!d) continue;
       // 무게중심에 가장 가까운 셀 → 번호 위치
       let mx = 0, my = 0;

@@ -186,7 +186,7 @@
         t.setAttribute("x", px);
         t.setAttribute("y", py);
         t.setAttribute("class", "region-num");
-        const minSize = custom ? 6 : 20;
+        const minSize = custom ? 3.5 : 20;
         const size = Math.max(minSize, Math.min(60, Math.min(bb.width, bb.height) * 0.5));
         t.setAttribute("font-size", size);
         t.textContent = region.c + 1;
@@ -287,7 +287,9 @@
     }
 
     _bindZoomPan(stage) {
-      const clampScale = (s) => Math.max(1, Math.min(6, s));
+      // 사진 도안(칸이 작음)은 더 크게 확대 가능
+      const maxScale = this.art.custom ? 16 : 6;
+      const clampScale = (s) => Math.max(1, Math.min(maxScale, s));
 
       stage.addEventListener("pointerdown", (e) => {
         stage.setPointerCapture(e.pointerId);

@@ -22,7 +22,7 @@
   function saveCustomArt(art) {
     const list = loadCustom();
     list.unshift(art);
-    while (list.length > 12) list.pop(); // 용량 보호
+    while (list.length > 6) list.pop(); // 용량 보호(세밀 도안은 데이터가 큼)
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); }
     catch (e) { alert("저장 공간이 부족해요. 기존 사진 도안을 지운 뒤 다시 시도해주세요."); }
   }
@@ -195,7 +195,7 @@
 
     // 옵션: 색 개수 / 정밀도
     const optColors = segmented("색 개수", ["16", "20", "24", "32"], 2); // 기본 24
-    const optDetail = segmented("정밀도", ["쉬움", "보통", "자세히"], 1); // 기본 보통
+    const optDetail = segmented("정밀도", ["쉬움", "보통", "자세히", "최고"], 2); // 기본 자세히
 
     const info = document.createElement("div");
     info.className = "cv-info";
@@ -231,10 +231,13 @@
       img.src = url;
     };
 
+    // cols: 격자 가로 칸수(클수록 세밀), minRegion: 이보다 작은 조각은 병합 시도
+    // (주변과 색 대비가 큰 작은 조각은 병합하지 않고 보존 — photo.js 참고)
     const DETAIL = {
-      "쉬움": { cols: 64, minRegion: 26 },
-      "보통": { cols: 96, minRegion: 15 },
-      "자세히": { cols: 128, minRegion: 8 },
+      "쉬움": { cols: 72, minRegion: 26 },
+      "보통": { cols: 110, minRegion: 14 },
+      "자세히": { cols: 150, minRegion: 8 },
+      "최고": { cols: 200, minRegion: 5 },
     };
 
     makeBtn.onclick = () => {

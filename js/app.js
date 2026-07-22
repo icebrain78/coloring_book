@@ -4,6 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
+  const APP_VERSION = "v0.5"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -89,7 +90,7 @@
     const header = document.createElement("header");
     header.className = "g-header";
     header.innerHTML =
-      '<h1>🎨 컬러링</h1><p class="g-sub">번호대로 색칠하는 힐링 타임 · 광고 없음</p>';
+      '<h1>🎨 컬러링</h1><p class="g-sub">번호대로 색칠하는 힐링 타임 · 광고 없음 · ' + APP_VERSION + "</p>";
     galleryEl.appendChild(header);
 
     const grid = document.createElement("div");

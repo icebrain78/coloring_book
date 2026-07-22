@@ -1,5 +1,10 @@
-/* 서비스워커: 오프라인 캐시 (앱 껍데기 + 도안 데이터) */
-const CACHE = "coloring-v2";
+/*
+ * 서비스워커: 네트워크 우선 + 오프라인 캐시 대체.
+ * 온라인이면 항상 서버의 최신 파일을 쓰고 캐시를 갱신하며,
+ * 오프라인일 때만 캐시로 동작한다. (캐시 우선 방식은 업데이트가
+ * 폰에 전달되지 않는 문제가 있어 v3부터 네트워크 우선으로 변경)
+ */
+const CACHE = "coloring-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -29,6 +34,14 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

@@ -1,5 +1,5 @@
 /* 서비스워커: 오프라인 캐시 (앱 껍데기 + 도안 데이터) */
-const CACHE = "coloring-v1";
+const CACHE = "coloring-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "./assets/icon.svg",
   "./css/style.css",
   "./js/artworks.js",
+  "./js/photo.js",
   "./js/engine.js",
   "./js/app.js",
 ];

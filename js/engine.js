@@ -126,8 +126,9 @@
       const viewport = document.createElement("div");
       viewport.className = "c-viewport";
       const svg = document.createElementNS(SVGNS, "svg");
-      svg.setAttribute("viewBox", "0 0 1000 1000");
-      svg.setAttribute("class", "c-svg");
+      const vw = art.w || 1000, vh = art.h || 1000;
+      svg.setAttribute("viewBox", "0 0 " + vw + " " + vh);
+      svg.setAttribute("class", "c-svg" + (art.custom ? " custom-art" : ""));
       this.svg = svg;
       this.viewport = viewport;
       viewport.appendChild(svg);
@@ -174,14 +175,19 @@
 
     /* 각 영역 중앙에 번호 텍스트 배치(영역 위에 얹음) */
     _placeNumbers() {
+      const custom = !!this.art.custom;
       this.art.regions.forEach((region, i) => {
         const shape = this.regionEls[i].shape;
         const bb = shape.getBBox();
+        // 사진 도안은 region.nx/ny(영역 무게중심)를 우선 사용
+        const px = region.nx != null ? region.nx : bb.x + bb.width / 2;
+        const py = region.ny != null ? region.ny : bb.y + bb.height / 2;
         const t = document.createElementNS(SVGNS, "text");
-        t.setAttribute("x", bb.x + bb.width / 2);
-        t.setAttribute("y", bb.y + bb.height / 2);
+        t.setAttribute("x", px);
+        t.setAttribute("y", py);
         t.setAttribute("class", "region-num");
-        const size = Math.max(20, Math.min(60, Math.min(bb.width, bb.height) * 0.42));
+        const minSize = custom ? 6 : 20;
+        const size = Math.max(minSize, Math.min(60, Math.min(bb.width, bb.height) * 0.5));
         t.setAttribute("font-size", size);
         t.textContent = region.c + 1;
         this.svg.appendChild(t);

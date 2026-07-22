@@ -214,7 +214,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 /* 사진 도안: 얇은 윤곽선(색이 많고 영역이 작아서) */
 .custom-art .region { stroke-width: 0.55; stroke: #c9ccd4; }
 .custom-art .region.target { stroke-width: 1.4; }
-.custom-art .region.filled { stroke-width: 1.6; } /* stroke 색은 JS가 fill과 동일하게 지정 */
+.custom-art .region.filled { stroke-width: 2.2; } /* stroke 색은 JS가 fill과 동일하게 지정 */
 
 /* ───────── 완성 오버레이 ───────── */
 .overlay {

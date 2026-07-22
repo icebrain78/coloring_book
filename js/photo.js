@@ -469,55 +469,77 @@ window.PhotoConverter = (function () {
     }
     let d = "";
     for (const loop of loops) {
-      const pts = simplify(loop);
-      if (pts.length < 3) continue;
-      d += smoothRing(pts, cw, ch);
+      let ring = loop.slice(0, loop.length - 1); // 마지막 중복점 제거
+      if (ring.length < 3) continue;
+      // 격자 계단 → 자연스러운 곡선:
+      // ① 이동평균으로 계단 진폭을 줄이고 ② Chaikin 코너 커팅 2회로 곡선화.
+      // (두 연산 모두 진행 방향을 뒤집어도 같은 결과라 이웃 조각과
+      //  공유하는 경계가 같은 모양 — 이음새가 벌어지지 않는다)
+      ring = ringSmooth(ring);
+      ring = chaikin(chaikin(ring));
+      // 점이 4배로 늘었으니 모양을 유지하는 선에서 솎아냄
+      ring = rdpClosed(ring, 0.25);
+      if (ring.length < 3) continue;
+      d += "M" + ring
+        .map((p) => (Math.round(p[0] * cw * 10) / 10) + " " + (Math.round(p[1] * ch * 10) / 10))
+        .join("L") + "Z";
     }
     return d;
   }
 
-  /* 직선 위 중간 꼭짓점 제거 */
-  function simplify(loop) {
-    const pts = loop.slice(0, loop.length - 1);
-    const n = pts.length, out = [];
+  /* 닫힌 링 이동평균(1-2-1 가중): 격자 계단의 지그재그 진폭을 줄임 */
+  function ringSmooth(pts) {
+    const n = pts.length, out = new Array(n);
     for (let i = 0; i < n; i++) {
       const a = pts[(i - 1 + n) % n], b = pts[i], c = pts[(i + 1) % n];
-      const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
-      if (cross === 0) continue;
-      out.push(b);
+      out[i] = [(a[0] + 2 * b[0] + c[0]) / 4, (a[1] + 2 * b[1] + c[1]) / 4];
     }
     return out;
   }
 
-  /*
-   * 닫힌 다각형 → 모서리를 둥글린 곡선 path.
-   * 각 꼭짓점에서 양쪽 변을 따라 최대 R(셀 1칸)까지 들어간 지점을 잇는
-   * quadratic Bézier로 모서리만 둥글린다.
-   *  - 격자 계단(변 길이 1칸)은 중점끼리 이어져 완만한 곡선이 되고,
-   *  - 긴 직선 변은 직선 그대로 유지된다(띠 모양이 렌즈처럼 붕괴하지 않음).
-   * 절단 거리 min(변/2, R)은 진행 방향을 뒤집어도 같으므로 이웃 영역과
-   * 공유하는 경계가 같은 모양으로 그려져 이음새가 벌어지지 않는다.
-   */
-  function smoothRing(pts, cw, ch) {
-    const n = pts.length;
-    const P = pts.map((p) => [p[0] * cw, p[1] * ch]);
-    const R = Math.min(cw, ch); // 모서리 반경 = 셀 1칸
-    const r = (v) => Math.round(v); // 정수 좌표(0.1% 오차, 저장 용량 절약)
-    const pt = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-    const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
-
-    let d = "";
+  /* Chaikin 코너 커팅: 각 변을 1:3 / 3:1 지점으로 잘라 곡선에 수렴 */
+  function chaikin(pts) {
+    const n = pts.length, out = [];
     for (let i = 0; i < n; i++) {
-      const prev = P[(i - 1 + n) % n], v = P[i], next = P[(i + 1) % n];
-      const lIn = len(prev, v), lOut = len(v, next);
-      const tIn = Math.min(lIn / 2, R) / lIn;    // v에서 prev 쪽으로
-      const tOut = Math.min(lOut / 2, R) / lOut; // v에서 next 쪽으로
-      const a = pt(v, prev, tIn);
-      const b = pt(v, next, tOut);
-      d += (i === 0 ? "M" + r(a[0]) + " " + r(a[1]) : "L" + r(a[0]) + " " + r(a[1]));
-      d += "Q" + r(v[0]) + " " + r(v[1]) + " " + r(b[0]) + " " + r(b[1]);
+      const a = pts[i], b = pts[(i + 1) % n];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
     }
-    return d + "Z";
+    return out;
+  }
+
+  /* 닫힌 다각형용 Ramer–Douglas–Peucker 단순화 (eps: 셀 단위 허용 오차) */
+  function rdpClosed(pts, eps) {
+    const n = pts.length;
+    if (n < 6) return pts;
+    // 고정점 2개(0번, 0번에서 가장 먼 점)로 나눠 각각 단순화
+    let far = 1, fd = -1;
+    for (let i = 1; i < n; i++) {
+      const dx = pts[i][0] - pts[0][0], dy = pts[i][1] - pts[0][1];
+      const dd = dx * dx + dy * dy;
+      if (dd > fd) { fd = dd; far = i; }
+    }
+    const a = rdpOpen(pts.slice(0, far + 1), eps);
+    const b = rdpOpen(pts.slice(far).concat([pts[0]]), eps);
+    return a.slice(0, -1).concat(b.slice(0, -1));
+  }
+
+  function rdpOpen(pts, eps) {
+    if (pts.length < 3) return pts;
+    const first = pts[0], last = pts[pts.length - 1];
+    let idx = -1, dmax = 0;
+    const dx = last[0] - first[0], dy = last[1] - first[1];
+    const len = Math.hypot(dx, dy) || 1e-9;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.abs(dx * (first[1] - pts[i][1]) - dy * (first[0] - pts[i][0])) / len;
+      if (d > dmax) { dmax = d; idx = i; }
+    }
+    if (dmax > eps) {
+      const left = rdpOpen(pts.slice(0, idx + 1), eps);
+      const right = rdpOpen(pts.slice(idx), eps);
+      return left.slice(0, -1).concat(right);
+    }
+    return [first, last];
   }
 
   /* ── 메인 변환 ── */

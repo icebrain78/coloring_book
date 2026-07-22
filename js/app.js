@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.0"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v1.1"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -21,11 +21,13 @@
     catch (e) { return []; }
   }
   function saveCustomArt(art) {
+    art.savedAt = Date.now(); // 동기화 병합 시 최신 판별용
     const list = loadCustom();
     list.unshift(art);
     while (list.length > 4) list.pop(); // 용량 보호(유화 세밀 도안은 도안당 1~2MB)
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); }
     catch (e) { alert("저장 공간이 부족해요. 기존 사진 도안을 지운 뒤 다시 시도해주세요."); }
+    Cloud.schedulePush();
   }
   function deleteCustom(id) {
     const list = loadCustom().filter((a) => a.id !== id);
@@ -33,6 +35,78 @@
     const prog = ColoringStore.loadAllProgress();
     delete prog[id];
     localStorage.setItem("coloring:progress:v1", JSON.stringify(prog));
+    Cloud.schedulePush();
+  }
+
+  /* ── 백업 내보내기/가져오기 (클라우드 설정 없이도 동작) ── */
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify(Cloud.localData())], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "컬러링백업.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data || (!data.custom && !data.progress)) throw new Error("형식이 달라요");
+        Cloud.writeLocal(Cloud.mergeData(Cloud.localData(), data));
+        Cloud.schedulePush();
+        showGallery();
+        alert("백업을 불러왔어요!");
+      } catch (e) {
+        alert("백업 파일을 읽지 못했어요: " + e.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* ── 로그인/회원가입 화면 ── */
+  function showAuth() {
+    let el = document.getElementById("auth");
+    if (el) { el.classList.remove("hidden"); return; }
+    el = document.createElement("div");
+    el.id = "auth";
+    el.className = "auth-overlay";
+    el.innerHTML =
+      '<div class="auth-box">' +
+      "<h2>☁️ 클라우드 동기화</h2>" +
+      '<p class="auth-sub">로그인하면 도안과 진행상황이 자동 저장되고<br>다른 기기에서도 이어서 칠할 수 있어요.</p>' +
+      '<input type="email" class="auth-input" id="auth-email" placeholder="이메일" autocomplete="email">' +
+      '<input type="password" class="auth-input" id="auth-pw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">' +
+      '<div class="auth-msg" id="auth-msg"></div>' +
+      '<button class="o-btn primary" id="auth-login">로그인</button>' +
+      '<button class="o-btn" id="auth-signup">회원가입</button>' +
+      '<button class="auth-close" id="auth-close">닫기</button>' +
+      "</div>";
+    document.body.appendChild(el);
+    const msg = el.querySelector("#auth-msg");
+    const busy = (b) => el.querySelectorAll("button").forEach((x) => (x.disabled = b));
+    const run = async (fn, okText) => {
+      const email = el.querySelector("#auth-email").value.trim();
+      const pw = el.querySelector("#auth-pw").value;
+      if (!email || pw.length < 6) { msg.textContent = "이메일과 6자 이상 비밀번호를 입력해주세요"; return; }
+      busy(true); msg.textContent = "잠시만요…";
+      try {
+        const r = await fn(email, pw);
+        if (r && r.needConfirm) {
+          msg.textContent = "가입 완료! 이메일의 확인 링크를 누른 뒤 로그인해주세요.";
+        } else {
+          el.classList.add("hidden");
+          showGallery();
+          if (okText) alert(okText);
+        }
+      } catch (e) {
+        msg.textContent = e.message === "Invalid login credentials" ? "이메일 또는 비밀번호가 달라요" : e.message;
+      }
+      busy(false);
+    };
+    el.querySelector("#auth-login").onclick = () => run(Cloud.login, "로그인 완료! 동기화가 켜졌어요 ☁️");
+    el.querySelector("#auth-signup").onclick = () => run(Cloud.signup, "가입 완료! 동기화가 켜졌어요 ☁️");
+    el.querySelector("#auth-close").onclick = () => el.classList.add("hidden");
   }
 
   /* ── 갤러리 썸네일용 미니 SVG ── */
@@ -91,6 +165,48 @@
     header.className = "g-header";
     header.innerHTML =
       '<h1>🎨 컬러링</h1><p class="g-sub">번호대로 색칠하는 힐링 타임 · 광고 없음 · ' + APP_VERSION + "</p>";
+
+    // 계정/백업 줄
+    const bar = document.createElement("div");
+    bar.className = "g-account";
+    if (Cloud.enabled) {
+      const u = Cloud.user();
+      if (u) {
+        const who = document.createElement("span");
+        who.className = "g-account-who";
+        who.textContent = "☁️ " + u.email;
+        const sync = document.createElement("span");
+        sync.className = "g-sync";
+        sync.id = "g-sync";
+        sync.textContent = "동기화됨";
+        const out = document.createElement("button");
+        out.className = "g-account-btn";
+        out.textContent = "로그아웃";
+        out.onclick = () => { Cloud.logout(); showGallery(); };
+        bar.append(who, sync, out);
+      } else {
+        const login = document.createElement("button");
+        login.className = "g-account-btn primary";
+        login.textContent = "☁️ 로그인 / 회원가입";
+        login.onclick = showAuth;
+        bar.appendChild(login);
+      }
+    }
+    const exp = document.createElement("button");
+    exp.className = "g-account-btn";
+    exp.textContent = "백업 저장";
+    exp.onclick = exportBackup;
+    const impInput = document.createElement("input");
+    impInput.type = "file";
+    impInput.accept = "application/json,.json";
+    impInput.style.display = "none";
+    impInput.onchange = () => impInput.files[0] && importBackup(impInput.files[0]);
+    const imp = document.createElement("button");
+    imp.className = "g-account-btn";
+    imp.textContent = "백업 불러오기";
+    imp.onclick = () => impInput.click();
+    bar.append(exp, imp, impInput);
+    header.appendChild(bar);
     galleryEl.appendChild(header);
 
     const grid = document.createElement("div");
@@ -374,5 +490,19 @@
     });
   }
 
+  // 동기화 상태를 갤러리 헤더에 반영
+  Cloud.onStatus((state, detail) => {
+    const el = document.getElementById("g-sync");
+    if (!el) return;
+    el.textContent =
+      state === "syncing" ? "동기화 중…" :
+      state === "synced" ? "동기화됨 ✓" :
+      state === "error" ? "동기화 실패(" + detail + ")" : "";
+  });
+
   showGallery();
+  // 로그인돼 있으면 클라우드 내려받아 병합 후 갤러리 갱신
+  Cloud.init().then(() => {
+    if (!galleryEl.classList.contains("hidden")) showGallery();
+  });
 })();

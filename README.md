@@ -81,7 +81,49 @@ python3 -m http.server 8099
 
 ---
 
-## 4. 다음 단계 (로드맵)
+## 4. 클라우드 동기화(회원가입) 설정 — 5분
+
+기본 저장은 브라우저 안(localStorage)이라 브라우저 데이터를 지우거나 다른
+기기로 가면 사라집니다. **무료 Supabase**를 연결하면 이메일 회원가입 +
+기기 간 자동 동기화가 켜집니다. (연결 전에도 "백업 저장/불러오기" 버튼으로
+파일 백업은 가능)
+
+1. [supabase.com](https://supabase.com) 가입 → **New project** (무료 플랜)
+2. 왼쪽 **SQL Editor** → 아래 SQL 붙여넣고 **Run**:
+
+   ```sql
+   create table public.user_data (
+     user_id uuid primary key references auth.users(id) on delete cascade,
+     payload jsonb not null default '{}'::jsonb,
+     updated_at timestamptz not null default now()
+   );
+   alter table public.user_data enable row level security;
+   create policy "own data" on public.user_data
+     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+   ```
+
+3. **Authentication → Sign In / Up** 에서 *Confirm email* 을 **끄기**
+   (켜두면 가입 후 메일 확인 링크를 눌러야 로그인됩니다 — 취향대로)
+4. **Project Settings → API** 에서 두 값 복사:
+   - Project URL (예: `https://abcdefghij.supabase.co`)
+   - `anon` `public` 키
+5. 이 저장소의 `js/cloud-config.js` 를 GitHub 웹에서 편집해 두 값을 넣고 커밋:
+
+   ```js
+   window.CLOUD_CONFIG = {
+     url: "https://abcdefghij.supabase.co",
+     anonKey: "eyJhbGciOi...",
+   };
+   ```
+
+> anon 키는 공개돼도 괜찮은 키입니다. 데이터 접근은 행 단위 보안규칙(RLS)이
+> 막아줘요 — 위 SQL의 policy가 "자기 데이터만 읽고 쓸 수 있음"을 보장합니다.
+
+배포가 반영되면 갤러리 상단에 **"☁️ 로그인 / 회원가입"** 버튼이 나타납니다.
+
+---
+
+## 5. 다음 단계 (로드맵)
 
 이번 v1은 **엔진 + 내장 도안 + PWA**까지 완성했습니다. 이어서:
 

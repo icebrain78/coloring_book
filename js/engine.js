@@ -27,6 +27,7 @@
     } catch (e) {
       /* 저장소 사용 불가(사파리 비공개 모드 등) — 무시하고 계속 */
     }
+    if (window.Cloud) window.Cloud.schedulePush(); // 로그인 상태면 클라우드에도
   }
   function getProgress(artId) {
     return loadAllProgress()[artId] || [];

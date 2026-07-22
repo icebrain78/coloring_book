@@ -136,23 +136,28 @@
       previewBtn.textContent = "완성본";
       previewBtn.onclick = () => this._togglePreview();
       if (art.custom) {
-        // 유화 질감 토글(사진 도안 전용)
+        // 브러시 선택(순환: 유화→수채→크레용→단색) — 브러시마다 질감·소리 다름
+        const BRUSHES = ["oil", "water", "crayon", "flat"];
+        const BRUSH_ICON = { oil: "🖌️", water: "💧", crayon: "🖍️", flat: "⬜" };
+        const BRUSH_NAME = { oil: "유화", water: "수채", crayon: "크레용", flat: "단색" };
         const texBtn = document.createElement("button");
         texBtn.className = "c-mute-btn";
         const syncTex = () => {
-          texBtn.textContent = "🖌️";
-          texBtn.style.opacity = this._texEnabled() ? "1" : "0.35";
-          texBtn.title = "유화 질감 " + (this._texEnabled() ? "끄기" : "켜기");
+          const k = this._brushKind();
+          texBtn.textContent = BRUSH_ICON[k] || "🖌️";
+          texBtn.title = "브러시: " + (BRUSH_NAME[k] || k) + " (누르면 변경)";
         };
         texBtn.onclick = () => {
-          localStorage.setItem("coloring:texture:v1", this._texEnabled() ? "0" : "1");
+          const k = this._brushKind();
+          const next = BRUSHES[(BRUSHES.indexOf(k) + 1) % BRUSHES.length];
+          localStorage.setItem("coloring:brush:v1", next);
           syncTex();
-          // 이미 칠한 조각들 다시 채우기
+          // 이미 칠한 조각들 새 브러시로 다시 채우기
           this.filled.forEach((i) => {
             const { shape, region } = this.regionEls[i];
-            shape.style.fill = this._texEnabled()
-              ? this._svgBrushFill(region.c, this._variantOf(i))
-              : this.art.palette[region.c].hex;
+            shape.style.fill = next === "flat"
+              ? this.art.palette[region.c].hex
+              : this._svgBrushFill(region.c, this._variantOf(i));
           });
           this._previewCanvasFor = null; // 완성본 미리보기 다시 렌더
         };
@@ -198,6 +203,8 @@
       this._numsHidden = null;
       this._defs = null; // 브러시 패턴 정의(svg별로 새로 생성)
       this._patterns = {};
+      this.guideEl = null; // 길잡이 화살표(무대별로 새로 생성)
+      this._guideOn = false;
 
       /* 하단 팔레트 */
       const palette = document.createElement("div");
@@ -216,12 +223,29 @@
         num.className = "swatch-num";
         num.textContent = idx + 1;
         b.appendChild(num);
-        b.onclick = () => this._select(idx);
+        // 짧게 탭: 색 선택 / 길게(0.45초): 남은 조각 방향 안내(빨간 화살표)
+        let lpTimer = null, lpFired = false;
+        b.addEventListener("pointerdown", () => {
+          lpFired = false;
+          clearTimeout(lpTimer);
+          lpTimer = setTimeout(() => {
+            lpFired = true;
+            this._select(idx);
+            this._startGuide();
+            if (navigator.vibrate) navigator.vibrate(15);
+          }, 450);
+        });
+        ["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
+          b.addEventListener(ev, () => clearTimeout(lpTimer))
+        );
+        b.onclick = () => { if (!lpFired) this._select(idx); };
         wrap.appendChild(b);
         palette.appendChild(wrap);
         this.swatchWraps.push(wrap);
         return b;
       });
+      // 길게 누를 때 모바일 컨텍스트 메뉴 방지
+      palette.addEventListener("contextmenu", (e) => e.preventDefault());
 
       // 색별 조각 수/완료 수 (팔레트 링 표시용)
       this.colorTotal = art.palette.map(
@@ -374,22 +398,22 @@
       }, 20000);
     }
 
-    /* ── 유화 브러시 질감 ──
-       색마다 붓결 타일(밝은/어두운 스트로크)을 3방향으로 만들어두고,
-       조각마다 고정 시드 랜덤으로 하나를 골라 채운다 → 이웃 조각끼리
-       붓 방향이 달라져 단색 느낌이 사라진다. */
-    _texEnabled() {
-      return !!this.art.custom && localStorage.getItem("coloring:texture:v1") !== "0";
+    /* ── 브러시 질감(4종: 유화·수채·크레용·단색) ──
+       색×브러시×변형(3방향)별 타일을 만들어두고 조각마다 고정 시드
+       랜덤으로 골라 채운다. 브러시마다 색칠 소리도 다르다(_tick). */
+    _brushKind() {
+      if (!this.art.custom) return "flat";
+      return localStorage.getItem("coloring:brush:v1") || "oil";
     }
 
     _variantOf(i) {
       return ((i * 2654435761) >>> 0) % 3; // 조각별 고정 '랜덤' 변형
     }
 
-    /* 붓결 타일 캔버스(색+변형별 1회 생성, 전역 캐시) */
-    _brushTile(hex, v) {
+    /* 붓결 타일 캔버스(색+브러시+변형별 1회 생성, 전역 캐시) */
+    _brushTile(hex, v, kind) {
       if (!ColoringEngine._tiles) ColoringEngine._tiles = {};
-      const key = hex + v;
+      const key = hex + "|" + kind + "|" + v;
       if (ColoringEngine._tiles[key]) return ColoringEngine._tiles[key];
       const S = 128;
       const cvs = document.createElement("canvas");
@@ -397,45 +421,82 @@
       const g = cvs.getContext("2d");
       g.fillStyle = hex;
       g.fillRect(0, 0, S, S);
-      // 고정 시드 난수(같은 색·변형이면 항상 같은 질감)
+      // 고정 시드 난수(같은 색·브러시·변형이면 항상 같은 질감)
       let seed = v * 7349 + 11;
+      for (let k = 0; k < kind.length; k++) seed = (seed * 31 + kind.charCodeAt(k)) >>> 0;
       for (let k = 0; k < hex.length; k++) seed = (seed * 31 + hex.charCodeAt(k)) >>> 0;
       const rnd = () => {
         seed = (seed * 1664525 + 1013904223) >>> 0;
         return seed / 4294967296;
       };
-      const ang = [0.35, -0.65, 1.25][v % 3] + (rnd() - 0.5) * 0.25;
-      g.translate(S / 2, S / 2);
-      g.rotate(ang);
-      g.translate(-S / 2, -S / 2);
-      g.lineCap = "round";
-      // 긴 붓결(은은하게)
-      for (let k = 0; k < 22; k++) {
-        const y = rnd() * S * 2 - S * 0.5;
-        const light = rnd() > 0.5;
-        g.strokeStyle = light
-          ? "rgba(255,255,255," + (0.03 + rnd() * 0.07).toFixed(3) + ")"
-          : "rgba(0,0,0," + (0.025 + rnd() * 0.06).toFixed(3) + ")";
-        g.lineWidth = 2.5 + rnd() * 6;
-        g.beginPath();
-        g.moveTo(-S * 0.6, y);
-        g.quadraticCurveTo(S * 0.5, y + (rnd() - 0.5) * 16, S * 1.6, y + (rnd() - 0.5) * 14);
-        g.stroke();
-      }
-      // 짧은 붓터치(불규칙한 덧칠 느낌)
-      for (let k = 0; k < 14; k++) {
-        const x = rnd() * S * 1.6 - S * 0.3;
-        const y = rnd() * S * 1.6 - S * 0.3;
-        const len = 14 + rnd() * 30;
-        const light = rnd() > 0.45;
-        g.strokeStyle = light
-          ? "rgba(255,255,255," + (0.04 + rnd() * 0.08).toFixed(3) + ")"
-          : "rgba(0,0,0," + (0.03 + rnd() * 0.07).toFixed(3) + ")";
-        g.lineWidth = 3 + rnd() * 6;
-        g.beginPath();
-        g.moveTo(x, y);
-        g.quadraticCurveTo(x + len * 0.5, y + (rnd() - 0.5) * 8, x + len, y + (rnd() - 0.5) * 6);
-        g.stroke();
+      const wb = (a) => "rgba(" + (rnd() > 0.5 ? "255,255,255" : "0,0,0") + "," + a.toFixed(3) + ")";
+
+      if (kind === "water") {
+        // 수채: 넓고 부드러운 얼룩 + 종이 알갱이
+        for (let k = 0; k < 10; k++) {
+          const x = rnd() * S, y = rnd() * S, r = 22 + rnd() * 46;
+          const col = rnd() > 0.45 ? "255,255,255" : "0,0,0";
+          const grad = g.createRadialGradient(x, y, 0, x, y, r);
+          grad.addColorStop(0, "rgba(" + col + "," + (0.05 + rnd() * 0.06).toFixed(3) + ")");
+          grad.addColorStop(1, "rgba(" + col + ",0)");
+          g.fillStyle = grad;
+          g.beginPath();
+          g.arc(x, y, r, 0, Math.PI * 2);
+          g.fill();
+        }
+        for (let k = 0; k < 150; k++) {
+          g.fillStyle = wb(0.02 + rnd() * 0.04);
+          g.fillRect(rnd() * S, rnd() * S, 1.5, 1.5);
+        }
+      } else if (kind === "crayon") {
+        // 크레용: 짧고 거친 긁힘 + 굵은 결
+        const ang = [0.5, -0.4, 1.1][v % 3] + (rnd() - 0.5) * 0.2;
+        g.translate(S / 2, S / 2); g.rotate(ang); g.translate(-S / 2, -S / 2);
+        g.lineCap = "round";
+        for (let k = 0; k < 95; k++) {
+          const x = rnd() * S * 1.6 - S * 0.3, y = rnd() * S * 1.6 - S * 0.3;
+          const len = 5 + rnd() * 15;
+          g.strokeStyle = wb(0.05 + rnd() * 0.1);
+          g.lineWidth = 1 + rnd() * 1.7;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(x + len, y + (rnd() - 0.5) * 5);
+          g.stroke();
+        }
+        for (let k = 0; k < 7; k++) {
+          const y = rnd() * S * 1.8 - S * 0.4;
+          g.strokeStyle = wb(0.035 + rnd() * 0.05);
+          g.lineWidth = 5 + rnd() * 8;
+          g.beginPath();
+          g.moveTo(-S * 0.5, y);
+          g.lineTo(S * 1.5, y + (rnd() - 0.5) * 14);
+          g.stroke();
+        }
+      } else {
+        // 유화(기본): 긴 붓결 + 짧은 덧칠
+        const ang = [0.35, -0.65, 1.25][v % 3] + (rnd() - 0.5) * 0.25;
+        g.translate(S / 2, S / 2); g.rotate(ang); g.translate(-S / 2, -S / 2);
+        g.lineCap = "round";
+        for (let k = 0; k < 22; k++) {
+          const y = rnd() * S * 2 - S * 0.5;
+          g.strokeStyle = wb(0.028 + rnd() * 0.065);
+          g.lineWidth = 2.5 + rnd() * 6;
+          g.beginPath();
+          g.moveTo(-S * 0.6, y);
+          g.quadraticCurveTo(S * 0.5, y + (rnd() - 0.5) * 16, S * 1.6, y + (rnd() - 0.5) * 14);
+          g.stroke();
+        }
+        for (let k = 0; k < 14; k++) {
+          const x = rnd() * S * 1.6 - S * 0.3;
+          const y = rnd() * S * 1.6 - S * 0.3;
+          const len = 14 + rnd() * 30;
+          g.strokeStyle = wb(0.035 + rnd() * 0.075);
+          g.lineWidth = 3 + rnd() * 6;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.quadraticCurveTo(x + len * 0.5, y + (rnd() - 0.5) * 8, x + len, y + (rnd() - 0.5) * 6);
+          g.stroke();
+        }
       }
       ColoringEngine._tiles[key] = cvs;
       return cvs;
@@ -443,8 +504,9 @@
 
     /* SVG <pattern>으로 등록하고 fill용 url 반환 */
     _svgBrushFill(c, v) {
+      const kind = this._brushKind();
       const hex = this.art.palette[c].hex;
-      const id = "bt-" + hex.slice(1) + "-" + v;
+      const id = "bt-" + kind + "-" + hex.slice(1) + "-" + v;
       if (!this._defs) {
         this._defs = document.createElementNS(SVGNS, "defs");
         this.svg.insertBefore(this._defs, this.svg.firstChild);
@@ -456,7 +518,7 @@
         pat.setAttribute("width", "90");
         pat.setAttribute("height", "90");
         const img = document.createElementNS(SVGNS, "image");
-        img.setAttribute("href", this._brushTile(hex, v).toDataURL("image/png"));
+        img.setAttribute("href", this._brushTile(hex, v, kind).toDataURL("image/png"));
         img.setAttribute("width", "90");
         img.setAttribute("height", "90");
         pat.appendChild(img);
@@ -466,7 +528,7 @@
       return "url(#" + id + ")";
     }
 
-    /* 색칠 효과음(짧은 틱) + 진동 */
+    /* 색칠 효과음(브러시마다 다른 소리) + 진동 */
     _tick() {
       if (this.muted) return;
       try {
@@ -474,16 +536,84 @@
           ColoringEngine._audio = new (window.AudioContext || window.webkitAudioContext)();
         }
         const ac = ColoringEngine._audio;
+        const kind = this._brushKind();
+        const n = this.filled.size;
+        // 브러시별 음색: 유화=또렷한 톡, 수채=물방울(음 미끄러짐),
+        // 크레용=사각사각(사각파+노이즈성 짧음), 단색=기본 틱
+        let type = "sine", f0 = 620 + (n % 5) * 60, f1 = 0, dur = 0.09, vol = 0.09;
+        if (kind === "water") { type = "sine"; f0 = 520 + (n % 4) * 40; f1 = f0 * 0.55; dur = 0.18; vol = 0.07; }
+        else if (kind === "crayon") { type = "square"; f0 = 190 + (n % 3) * 26; dur = 0.045; vol = 0.045; }
+        else if (kind === "oil") { type = "triangle"; f0 = 460 + (n % 5) * 55; dur = 0.11; vol = 0.09; }
         const o = ac.createOscillator(), g = ac.createGain();
-        o.type = "sine";
-        o.frequency.value = 620 + (this.filled.size % 5) * 60; // 살짝씩 다른 음
-        g.gain.setValueAtTime(0.09, ac.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.09);
+        o.type = type;
+        o.frequency.setValueAtTime(f0, ac.currentTime);
+        if (f1) o.frequency.exponentialRampToValueAtTime(f1, ac.currentTime + dur);
+        g.gain.setValueAtTime(vol, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
         o.connect(g).connect(ac.destination);
         o.start();
-        o.stop(ac.currentTime + 0.1);
+        o.stop(ac.currentTime + dur + 0.02);
       } catch (e) { /* 오디오 미지원 무시 */ }
       if (navigator.vibrate) navigator.vibrate(8);
+    }
+
+    /* ── 길잡이: 물감을 길게 누르면 남은 조각 방향을 빨간 화살표로 안내 ── */
+    _startGuide() {
+      if (!this.guideEl) {
+        const el = document.createElement("div");
+        el.className = "c-guide-arrow";
+        el.textContent = "➤";
+        this.stageEl.appendChild(el);
+        this.guideEl = el;
+      }
+      this._guideOn = true;
+      this._updateGuide();
+    }
+
+    _hideGuide() {
+      this._guideOn = false;
+      if (this.guideEl) this.guideEl.style.display = "none";
+    }
+
+    _updateGuide() {
+      if (!this._guideOn || !this.guideEl) return;
+      const c = this.selected;
+      const remain = this.colorRegions[c].filter((i) => !this.filled.has(i));
+      if (!remain.length) { this._hideGuide(); return; }
+      const st = this.stageEl.getBoundingClientRect();
+      const svgR = this.svg.getBoundingClientRect();
+      if (!svgR.width) return;
+      const vw = this.art.w || 1000, vh = this.art.h || 1000;
+      const cx = st.left + st.width / 2, cy = st.top + st.height / 2;
+      // 화면 중심에서 가장 가까운 남은 조각(화면 좌표 기준)
+      let best = -1, bd = Infinity, bx = 0, by = 0;
+      for (const i of remain) {
+        const bb = this.bboxes[i];
+        const px = svgR.left + (((bb[0] + bb[2]) / 2) / vw) * svgR.width;
+        const py = svgR.top + (((bb[1] + bb[3]) / 2) / vh) * svgR.height;
+        const dd = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+        if (dd < bd) { bd = dd; best = i; bx = px; by = py; }
+      }
+      // 화면 안에 있으면: 반짝여주고 안내 종료
+      if (bx > st.left + 30 && bx < st.right - 30 && by > st.top + 70 && by < st.bottom - 30) {
+        this._flash(best);
+        this._hideGuide();
+        return;
+      }
+      // 화면 밖: 가장자리에 방향 화살표
+      const ang = Math.atan2(by - cy, bx - cx);
+      const cosA = Math.cos(ang), sinA = Math.sin(ang);
+      const rx = st.width / 2 - 46, ry = st.height / 2 - 46;
+      const t = Math.min(
+        cosA !== 0 ? rx / Math.abs(cosA) : Infinity,
+        sinA !== 0 ? ry / Math.abs(sinA) : Infinity
+      );
+      const el = this.guideEl;
+      el.style.display = "block";
+      el.style.left = (cx + cosA * t - st.left) + "px";
+      el.style.top = (cy + sinA * t - st.top) + "px";
+      el.style.transform =
+        "translate(-50%,-50%) rotate(" + ((ang * 180) / Math.PI).toFixed(1) + "deg)";
     }
 
     /* 팔레트 원 둘레의 진행률 링 갱신 */
@@ -620,7 +750,7 @@
       const art = this.art;
       const vw = art.w || 1000, vh = art.h || 1000;
       // 완성본은 도안당 한 번만 렌더해서 재사용(질감 설정 바뀌면 다시)
-      const cacheKey = art.id + (this._texEnabled() ? ":tex" : ":flat");
+      const cacheKey = art.id + ":" + this._brushKind();
       if (!this._previewCanvas || this._previewCanvasFor !== cacheKey) {
         const cvs = document.createElement("canvas");
         const W = 1400;
@@ -630,12 +760,12 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, cvs.width, cvs.height);
         ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
-        const tex = this._texEnabled();
+        const kind = this._brushKind();
         art.regions.forEach((r, i) => {
           const hex = art.palette[r.c].hex;
-          const fill = tex
-            ? ctx.createPattern(this._brushTile(hex, this._variantOf(i)), "repeat")
-            : hex;
+          const fill = kind === "flat"
+            ? hex
+            : ctx.createPattern(this._brushTile(hex, this._variantOf(i), kind), "repeat");
           this._drawRegionOnCtx(ctx, r, fill);
         });
         this._previewCanvas = cvs;
@@ -752,6 +882,7 @@
         this._tick();                      // 효과음+진동
         this._armHint();                   // 힌트 타이머 리셋
         this._findIdx = -1;
+        if (this._guideOn) this._updateGuide(); // 다음 남은 조각으로 안내 갱신
         if (window.AppStats) window.AppStats.paint(); // 통계
         this._afterPaint(i);
       } else {
@@ -767,9 +898,9 @@
       const { shape, text, region } = this.regionEls[i];
       // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
       const hex = this.art.palette[region.c].hex;
-      shape.style.fill = this._texEnabled()
-        ? this._svgBrushFill(region.c, this._variantOf(i))
-        : hex;
+      shape.style.fill = this._brushKind() === "flat"
+        ? hex
+        : this._svgBrushFill(region.c, this._variantOf(i));
       // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈
       if (this.art.custom) shape.style.stroke = hex;
       // 미니맵에도 칠하기
@@ -824,6 +955,7 @@
         requestAnimationFrame(() => {
           this._mmPending = false;
           this._updateMinimapView();
+          this._updateGuide(); // 화면을 움직이면 길잡이 화살표도 따라감
         });
       }
       // 컬링은 조작이 멈춘 뒤 한 번만(120ms 디바운스)

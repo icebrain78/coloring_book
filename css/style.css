@@ -128,6 +128,19 @@ button:disabled { opacity: 0.55; }
   50% { fill: #ffd23f; }
 }
 
+/* 길잡이 화살표(물감 길게 누르기) */
+.c-guide-arrow {
+  position: absolute; z-index: 7; display: none;
+  color: #e23e3e; font-size: 42px; line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: guidePulse 0.9s ease-in-out infinite;
+}
+@keyframes guidePulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* 갤러리 통계 줄 */
 .g-stats { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 

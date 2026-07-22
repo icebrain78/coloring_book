@@ -136,6 +136,70 @@ window.PhotoConverter = (function () {
     return out;
   }
 
+  /*
+   * ── Felzenszwalb 그래프 세그멘테이션 ──
+   * 셀을 노드로, 이웃 셀 간 색차를 간선 가중치로 하는 그래프에서
+   * "영역 내부의 색 변화 + k/크기" 보다 약한 간선만 병합한다.
+   * → 색이 서서히 변하는 긴 붓터치는 끝까지 한 조각으로 이어지고,
+   *   뚜렷한 이음새(간선 가중치 큰 곳)에서만 끊긴다.
+   * k가 클수록 큰 조각. 반환: 0..count-1 로 재매긴 라벨 grid.
+   */
+  function fhSegment(labCells, cols, rows, k) {
+    const N = cols * rows;
+    const parent = new Int32Array(N);
+    const size = new Int32Array(N).fill(1);
+    const intd = new Float32Array(N); // 컴포넌트 내부 최대 간선 가중치
+    for (let i = 0; i < N; i++) parent[i] = i;
+    const find = (x) => {
+      while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+      return x;
+    };
+    const edges = [];
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        if (x < cols - 1) edges.push([Math.sqrt(dist2(labCells[i], labCells[i + 1])), i, i + 1]);
+        if (y < rows - 1) edges.push([Math.sqrt(dist2(labCells[i], labCells[i + cols])), i, i + cols]);
+      }
+    }
+    edges.sort((a, b) => a[0] - b[0]);
+    for (let e = 0; e < edges.length; e++) {
+      const w = edges[e][0];
+      const a = find(edges[e][1]), b = find(edges[e][2]);
+      if (a === b) continue;
+      const ta = intd[a] + k / size[a], tb = intd[b] + k / size[b];
+      if (w <= Math.min(ta, tb)) {
+        parent[b] = a;
+        size[a] += size[b];
+        intd[a] = Math.max(intd[a], Math.max(intd[b], w));
+      }
+    }
+    const grid = new Int32Array(N);
+    const map = new Map();
+    for (let i = 0; i < N; i++) {
+      const r = find(i);
+      if (!map.has(r)) map.set(r, map.size);
+      grid[i] = map.get(r);
+    }
+    return { grid, count: map.size };
+  }
+
+  /* 라벨 grid 기준으로 벡터(vecs)의 라벨별 평균 */
+  function averageBy(grid, vecs, count) {
+    const dim = vecs[0].length;
+    const sum = Array.from({ length: count }, () => new Float64Array(dim + 1));
+    for (let i = 0; i < grid.length; i++) {
+      const s = sum[grid[i]], v = vecs[i];
+      for (let d = 0; d < dim; d++) s[d] += v[d];
+      s[dim]++;
+    }
+    return sum.map((s) => {
+      const out = new Array(dim);
+      for (let d = 0; d < dim; d++) out[d] = s[d] / (s[dim] || 1);
+      return out;
+    });
+  }
+
   /* ── 연결 요소 (4-이웃) ── */
   function components(grid, cols, rows) {
     const N = cols * rows;
@@ -317,24 +381,24 @@ window.PhotoConverter = (function () {
     let cells = new Array(N);
     for (let i = 0; i < N; i++) cells[i] = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
 
-    // 2) 선명화(이목구비·붓터치 대비 강화) → 3) Lab 공간에서 양자화
+    // 2) 선명화(이목구비·붓터치 대비 강화)
     cells = unsharp(cells, cols, rows, 0.7);
     const labCells = cells.map(rgb2lab);
-    // 붓터치 보존의 핵심: 색을 사용자가 고른 K보다 훨씬 잘게(Kfine) 나눠
-    // "비슷하지만 다른" 이웃 획이 별개 영역으로 분리되게 한다.
-    // 팔레트는 아래 8)에서 K개로 응집 — 이웃 조각이 같은 번호를 공유할 수
-    // 있는 실제 페인팅 키트 방식.
-    const Kfine = Math.min(72, K * 2 + 8);
-    const { labels, centroids } = kmeans(labCells, Kfine, 10);
 
-    // 4) 잡티 제거 → 5) 작은 영역 병합(고대비 조각은 보존)
-    let grid = modeFilter(labels, cols, rows);
-    grid = mergeSmall(grid, cols, rows, minRegion, centroids);
+    // 3) 그래프 세그멘테이션: 격자 색 양자화 대신 경계 기반으로 영역을
+    //    키운다. 색이 서서히 변하는 긴 붓터치는 한 조각으로 이어지고
+    //    뚜렷한 이음새에서만 끊겨 획의 길쭉한 형태가 살아남는다.
+    const fhK = opts.fhK || 9;
+    const seg = fhSegment(labCells, cols, rows, fhK);
+    let segLab = averageBy(seg.grid, labCells, seg.count);
 
-    // 6) 최종 연결 요소
+    // 4) 작은 조각 병합(주변과 대비 큰 조각 — 눈동자 등 — 은 보존)
+    let grid = mergeSmall(seg.grid, cols, rows, minRegion, segLab);
+
+    // 5) 최종 연결 요소
     const { list, comp } = components(grid, cols, rows);
 
-    // 7) 세분 라벨별 평균 RGB·사용량 집계
+    // 6) 라벨(세그먼트)별 평균 RGB/Lab·크기 집계
     const usedLabels = [...new Set(list.map((c) => c.label))];
     const rgbSum = {};
     for (let i = 0; i < N; i++) {
@@ -350,46 +414,36 @@ window.PhotoConverter = (function () {
       weightOf[lab] = s[3];
     });
 
-    // 8) 팔레트 응집: 세분 클러스터를 색이 가까운 것끼리 합쳐 K개로.
-    //    영역 경계(세분 기준)는 그대로 → 획 모양이 유지된다.
-    let nodes = usedLabels.map((l) => ({
-      labs: [l],
-      c: centroids[l].slice(), // Lab
-      w: weightOf[l],
-    }));
-    while (nodes.length > K) {
-      let bi = -1, bj = -1, bd = Infinity;
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dd = dist2(nodes[i].c, nodes[j].c);
-          if (dd < bd) { bd = dd; bi = i; bj = j; }
-        }
-      }
-      const a = nodes[bi], b = nodes[bj], w = a.w + b.w;
-      a.c = [
-        (a.c[0] * a.w + b.c[0] * b.w) / w,
-        (a.c[1] * a.w + b.c[1] * b.w) / w,
-        (a.c[2] * a.w + b.c[2] * b.w) / w,
-      ];
-      a.labs = a.labs.concat(b.labs);
-      a.w = w;
-      nodes.splice(bj, 1);
+    // 7) 팔레트 축소: 세그먼트 대표색들을 k-means로 K개 그룹으로.
+    //    영역 경계는 그대로 → 이웃 조각이 같은 번호를 공유할 수 있는
+    //    실제 페인팅 키트 방식.
+    let clusterOf; // usedLabels 인덱스 → 클러스터 번호
+    if (usedLabels.length <= K) {
+      clusterOf = usedLabels.map((_, i) => i);
+    } else {
+      const pts = usedLabels.map((l) => rgb2lab(avgRGB[l]));
+      clusterOf = Array.from(kmeans(pts, K, 12).labels);
     }
-    // 최종 팔레트 색 = 소속 세분 라벨들의 가중 평균 RGB
-    nodes.forEach((n) => {
-      let r = 0, g = 0, b = 0, w = 0;
-      n.labs.forEach((l) => {
-        const c = avgRGB[l], wl = weightOf[l];
-        r += c[0] * wl; g += c[1] * wl; b += c[2] * wl; w += wl;
-      });
-      n.rgb = [r / w, g / w, b / w];
+    // 클러스터별 가중 평균 RGB → 팔레트 색
+    const cSum = {};
+    usedLabels.forEach((l, i) => {
+      const cl = clusterOf[i];
+      if (!cSum[cl]) cSum[cl] = [0, 0, 0, 0];
+      const s = cSum[cl], c = avgRGB[l], w = weightOf[l];
+      s[0] += c[0] * w; s[1] += c[1] * w; s[2] += c[2] * w; s[3] += w;
     });
-    nodes.sort((a, b) => luminance(a.rgb) - luminance(b.rgb));
+    const clusters = Object.keys(cSum).map((cl) => ({
+      cl: +cl,
+      rgb: [cSum[cl][0] / cSum[cl][3], cSum[cl][1] / cSum[cl][3], cSum[cl][2] / cSum[cl][3]],
+    }));
+    clusters.sort((a, b) => luminance(a.rgb) - luminance(b.rgb));
+    const clusterToIdx = {};
+    const palette = clusters.map((o, idx) => {
+      clusterToIdx[o.cl] = idx;
+      return { hex: toHex(o.rgb), name: "색 " + (idx + 1) };
+    });
     const labelToIdx = {};
-    const palette = nodes.map((n, idx) => {
-      n.labs.forEach((l) => { labelToIdx[l] = idx; });
-      return { hex: toHex(n.rgb), name: "색 " + (idx + 1) };
-    });
+    usedLabels.forEach((l, i) => { labelToIdx[l] = clusterToIdx[clusterOf[i]]; });
 
     // 7) 영역 → path + 번호 위치
     const W = 1000, H = Math.round(1000 * rows / cols);

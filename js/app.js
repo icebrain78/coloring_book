@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v0.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v0.7"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -234,11 +234,12 @@
 
     // cols: 격자 가로 칸수(클수록 세밀), minRegion: 이보다 작은 조각은 병합 시도
     // (주변과 색 대비가 큰 작은 조각은 병합하지 않고 보존 — photo.js 참고)
+    // fhK: 세그멘테이션 스케일(작을수록 조각이 잘게, 획 단위로)
     const DETAIL = {
-      "쉬움": { cols: 72, minRegion: 26 },
-      "보통": { cols: 110, minRegion: 14 },
-      "자세히": { cols: 170, minRegion: 7 },
-      "최고": { cols: 280, minRegion: 4 }, // 실제 페인팅 키트급 세밀함
+      "쉬움": { cols: 72, minRegion: 26, fhK: 16 },
+      "보통": { cols: 110, minRegion: 14, fhK: 12 },
+      "자세히": { cols: 170, minRegion: 7, fhK: 9 },
+      "최고": { cols: 280, minRegion: 4, fhK: 7 }, // 실제 페인팅 키트급
     };
 
     makeBtn.onclick = () => {
@@ -249,7 +250,7 @@
       setTimeout(() => {
         const colors = parseInt(optColors.value(), 10);
         const d = DETAIL[optDetail.value()];
-        builtArt = PhotoConverter.convert(pickedImg, { colors, cols: d.cols, minRegion: d.minRegion });
+        builtArt = PhotoConverter.convert(pickedImg, { colors, cols: d.cols, minRegion: d.minRegion, fhK: d.fhK });
         // 완성 색상 미리보기
         preview.innerHTML = "";
         preview.appendChild(buildThumb(builtArt, [], true));

@@ -1,0 +1,174 @@
+/* ───────── 기본/리셋 ───────── */
+:root {
+  --brand: #6c5ce7;
+  --brand-2: #a29bfe;
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --ink: #2d3436;
+  --muted: #8a8f98;
+  --line: #e7e7ee;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color: var(--ink); background: var(--bg);
+  overscroll-behavior: none;
+}
+#app, .screen { height: 100%; }
+.hidden { display: none !important; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+/* ───────── 갤러리 ───────── */
+#gallery { overflow-y: auto; padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
+.g-header {
+  padding: calc(28px + env(safe-area-inset-top)) 4px 14px;
+}
+.g-header h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.5px; }
+.g-sub { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+.g-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+}
+@media (min-width: 640px) { .g-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.g-card {
+  display: flex; flex-direction: column; text-align: left;
+  background: var(--card); border-radius: 18px; overflow: hidden;
+  box-shadow: var(--shadow); padding: 0; transition: transform 0.12s ease;
+}
+.g-card:active { transform: scale(0.97); }
+.g-thumb {
+  position: relative; aspect-ratio: 1 / 1; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--line);
+}
+.thumb-svg { width: 100%; height: 100%; display: block; }
+.g-badge {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--brand); color: #fff; font-size: 11px; font-weight: 700;
+  padding: 4px 8px; border-radius: 999px;
+}
+.g-meta { padding: 10px 12px 12px; }
+.g-name { font-weight: 700; font-size: 15px; }
+.g-bar { margin-top: 8px; height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.g-bar-fill { height: 100%; background: linear-gradient(90deg, var(--brand), var(--brand-2)); border-radius: 999px; transition: width 0.3s; }
+
+/* ───────── 색칠 화면 ───────── */
+#canvas { display: flex; flex-direction: column; height: 100%; }
+.c-top {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  border-bottom: 1px solid var(--line); background: var(--card);
+}
+.c-back { font-size: 16px; font-weight: 600; color: var(--brand); padding: 6px 4px; }
+.c-title { flex: 1; text-align: center; font-weight: 700; font-size: 16px; }
+.c-progress {
+  min-width: 52px; text-align: right; font-weight: 700; color: var(--brand); font-size: 15px;
+}
+
+.c-stage {
+  flex: 1; overflow: hidden; position: relative;
+  background: #fafafb; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.c-viewport {
+  width: 100%; height: 100%; max-width: 100vh;
+  transform-origin: center center;
+  display: flex; align-items: center; justify-content: center;
+}
+.c-svg { width: 100%; height: 100%; display: block; }
+
+.region {
+  fill: #ffffff; stroke: #cfcfd6; stroke-width: 2.5;
+  transition: fill 0.15s ease;
+}
+.region.target { stroke: var(--brand); stroke-width: 4; animation: targetPulse 1.4s ease-in-out infinite; }
+.region.filled { stroke: rgba(0,0,0,0.12); }
+.region.pop { animation: pop 0.28s ease; }
+.region.shake { animation: shake 0.32s ease; }
+.region-num {
+  fill: #7a828c; font-weight: 700; text-anchor: middle;
+  dominant-baseline: central; pointer-events: none; user-select: none;
+}
+
+@keyframes targetPulse {
+  0%, 100% { stroke-opacity: 0.5; }
+  50% { stroke-opacity: 1; }
+}
+@keyframes pop {
+  0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); }
+  transform-box: fill-box; transform-origin: center;
+}
+.region.pop { transform-box: fill-box; transform-origin: center; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); } 75% { transform: translateX(3px); }
+}
+
+/* ───────── 팔레트 ───────── */
+.c-palette {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  background: var(--card); border-top: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.c-palette::-webkit-scrollbar { display: none; }
+.swatch {
+  position: relative; flex: 0 0 auto;
+  width: 52px; height: 52px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06);
+  transition: transform 0.12s ease;
+}
+.swatch-num {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 18px; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.swatch.active { transform: translateY(-6px) scale(1.08); box-shadow: 0 0 0 3px var(--brand); }
+.swatch.done { opacity: 0.35; }
+.swatch.done::after {
+  content: "✓"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.swatch.done .swatch-num { display: none; }
+
+/* ───────── 완성 오버레이 ───────── */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(20, 20, 30, 0.55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.o-box {
+  background: var(--card); border-radius: 24px; padding: 24px;
+  width: 100%; max-width: 340px; text-align: center; box-shadow: var(--shadow);
+  animation: rise 0.35s ease;
+}
+@keyframes rise { from { transform: translateY(20px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.o-thumb {
+  width: 160px; height: 160px; margin: 0 auto 14px;
+  border-radius: 16px; overflow: hidden; box-shadow: var(--shadow);
+}
+.o-thumb .thumb-svg { width: 100%; height: 100%; }
+.o-box h2 { margin: 4px 0 6px; font-size: 24px; }
+.o-box p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+.o-btns { display: flex; flex-direction: column; gap: 10px; }
+.o-btn {
+  padding: 13px; border-radius: 14px; font-weight: 700; font-size: 15px;
+  background: var(--line); color: var(--ink);
+}
+.o-btn.primary { background: var(--brand); color: #fff; }
+
+.o-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.o-confetti i {
+  position: absolute; top: -20px; width: 10px; height: 14px; border-radius: 2px;
+  animation: fall 2.4s linear infinite;
+}
+@keyframes fall {
+  0% { transform: translateY(-20px) rotate(0); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(540deg); opacity: 0.9; }
+}

@@ -1,0 +1,97 @@
+# 🎨 컬러링 (Color by Number) — 광고 없는 웹앱
+
+번호를 따라 색칠하는 힐링 컬러링 앱입니다. **광고·결제·로그인 전혀 없음.**
+설치 없이 링크만 열면 폰에서 앱처럼 동작하고, "홈 화면에 추가"하면 아이콘이 생깁니다(PWA).
+
+| | |
+|---|---|
+| 기술 | 순수 HTML/CSS/JavaScript (빌드 도구·서버 불필요) |
+| 저장 | 진행상황은 폰 안에 자동 저장 (localStorage) |
+| 오프라인 | 서비스워커로 캐시 → 비행기 모드에서도 동작 |
+| 내장 도안 | 산속 오두막 · 과일 바구니 · 바다 요트 (3종) |
+
+---
+
+## 1. 내 컴퓨터에서 바로 실행해보기
+
+이 폴더(`coloring-app/`)에서 아래 한 줄이면 됩니다:
+
+```bash
+python3 -m http.server 8099
+```
+
+그리고 브라우저에서 `http://localhost:8099` 접속.
+(파일을 그냥 더블클릭해도 색칠은 되지만, 오프라인 캐시는 `http://`로 열어야 켜집니다.)
+
+## 2. 폰에서 진짜 앱처럼 쓰기 — GitHub Pages 무료 배포
+
+폰에서 쓰려면 인터넷 주소(HTTPS)가 필요합니다. GitHub Pages가 **무료**입니다.
+
+1. 저장소 페이지에서 **⚙️ Settings → Pages** 이동
+   (주소: `https://github.com/icebrain78/coloring_book/settings/pages`)
+2. **Source**: `Deploy from a branch` 선택
+3. **Branch**: `main`, 폴더 `/ (root)` → **Save**
+4. 1~2분 뒤 나오는 주소로 접속:
+   ```
+   https://icebrain78.github.io/coloring_book/
+   ```
+5. 폰 브라우저(크롬/사파리)에서 그 주소 열기 → **메뉴 → 홈 화면에 추가**
+   → 홈 화면에 컬러링 아이콘 생성, 전체화면 앱처럼 실행 ✅
+
+---
+
+## 3. 도안(그림) 추가하는 법
+
+`js/artworks.js` 의 `ARTWORKS` 배열에 객체 하나만 더 넣으면 갤러리에 자동 등장합니다.
+좌표계는 `0 0 1000 1000`. 각 영역은 `c`(색 번호, 0부터) 와 도형을 지정합니다.
+
+```js
+{
+  id: "myart",                 // 고유 키(저장용)
+  title: "내 그림",
+  palette: [                   // 배열 index 0 = 화면 번호 "1"
+    { hex: "#AEE3F5", name: "하늘" },
+    { hex: "#E06C5E", name: "지붕" },
+  ],
+  regions: [
+    { c: 0, shape: "rect",   x: 0, y: 0, w: 1000, h: 600 },        // 하늘(색1)
+    { c: 1, shape: "circle", cx: 500, cy: 700, r: 120 },           // 원(색2)
+    // shape: rect | circle | ellipse | polygon | path
+    // polygon → points:"x1,y1 x2,y2 ...", path → d:"M... Z"
+  ],
+}
+```
+
+번호는 각 영역의 중심에 자동 배치됩니다(직접 좌표 안 넣어도 됨).
+
+---
+
+## 4. 다음 단계 (로드맵)
+
+이번 v1은 **엔진 + 내장 도안 + PWA**까지 완성했습니다. 이어서:
+
+- [ ] **내 사진 → 넘버링 도안 자동 변환**
+  - 브라우저에서: 이미지 → 색상 양자화(k-means로 N색 축소) → 영역 라벨링 → 각 영역 번호 부여
+  - 같은 `regions` 데이터 형식으로 출력하도록 만들면 엔진은 그대로 재사용
+- [ ] 도안 더 추가 (동물/풍경/캐릭터), 난이도(색 개수) 옵션
+- [ ] 완성작 이미지로 저장/공유(canvas → PNG 내보내기)
+- [ ] **안드로이드 APK**: 이 웹앱을 그대로 감싸서 앱으로 배포
+  - 가장 쉬운 길: [PWABuilder](https://www.pwabuilder.com) 에 배포 주소 입력 → APK 생성
+  - 또는 Flutter/Capacitor 로 WebView 래핑
+
+---
+
+## 폴더 구조
+
+```
+coloring_book/              (저장소 루트)
+├── index.html              앱 껍데기
+├── manifest.webmanifest    PWA 설정(홈 화면 설치)
+├── sw.js                   서비스워커(오프라인 캐시)
+├── assets/icon.svg         앱 아이콘
+├── css/style.css           스타일
+└── js/
+    ├── artworks.js         도안 데이터 (여기에 그림 추가)
+    ├── engine.js           색칠 엔진 (렌더/탭/줌/저장)
+    └── app.js              갤러리·화면전환·완성 축하
+```

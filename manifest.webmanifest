@@ -1,0 +1,20 @@
+{
+  "name": "컬러링 — 번호대로 색칠하기",
+  "short_name": "컬러링",
+  "description": "번호를 따라 색칠하는 힐링 컬러링. 광고 없음.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f5f7",
+  "theme_color": "#6c5ce7",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

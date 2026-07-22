@@ -17,6 +17,7 @@ window.Cloud = (function () {
   const PROGRESS_KEY = "coloring:progress:v1";
   const DELETED_KEY = "coloring:deleted:v1"; // { 도안id: 삭제시각 } — 삭제 전파용
   const STATS_KEY = "coloring:stats:v1";
+  const BRUSHES_KEY = "coloring:brushes:v1"; // { 도안id: { 조각index: 브러시 } }
 
   let session = null; // { access_token, refresh_token, expires_at, user:{id,email} }
   let pushTimer = null;
@@ -117,18 +118,20 @@ window.Cloud = (function () {
 
   /* ── 로컬 데이터 읽기/쓰기 ── */
   function localData() {
-    let custom = [], progress = {}, deleted = {}, stats = null;
+    let custom = [], progress = {}, deleted = {}, stats = null, brushes = {};
     try { custom = JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch (e) {}
     try { progress = JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) {}
     try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) {}
     try { stats = JSON.parse(localStorage.getItem(STATS_KEY)); } catch (e) {}
-    return { custom, progress, deleted, stats: stats || { pieces: 0, completed: 0, days: {} }, t: Date.now() };
+    try { brushes = JSON.parse(localStorage.getItem(BRUSHES_KEY)) || {}; } catch (e) {}
+    return { custom, progress, deleted, brushes, stats: stats || { pieces: 0, completed: 0, days: {} }, t: Date.now() };
   }
   function writeLocal(data) {
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(data.custom)); } catch (e) {}
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(data.progress)); } catch (e) {}
     try { localStorage.setItem(DELETED_KEY, JSON.stringify(data.deleted || {})); } catch (e) {}
     try { if (data.stats) localStorage.setItem(STATS_KEY, JSON.stringify(data.stats)); } catch (e) {}
+    try { localStorage.setItem(BRUSHES_KEY, JSON.stringify(data.brushes || {})); } catch (e) {}
   }
 
   /*
@@ -164,6 +167,15 @@ window.Cloud = (function () {
       const pb = (b.progress || {})[k] || [];
       progress[k] = pa.length >= pb.length ? pa : pb;
     });
+    // 조각별 브러시: 도안별로 합치기(더 많이 칠한 쪽 진행과 자연스럽게 맞음)
+    const brushes = {};
+    const bKeys = new Set(
+      Object.keys(a.brushes || {}).concat(Object.keys(b.brushes || {}))
+    );
+    bKeys.forEach((k) => {
+      if (deleted[k] && !alive.has(k)) return;
+      brushes[k] = Object.assign({}, (a.brushes || {})[k], (b.brushes || {})[k]);
+    });
     // 통계: 수치는 큰 쪽, 활동일은 합집합
     const sa = a.stats || { pieces: 0, completed: 0, days: {} };
     const sb = b.stats || { pieces: 0, completed: 0, days: {} };
@@ -172,7 +184,7 @@ window.Cloud = (function () {
       completed: Math.max(sa.completed || 0, sb.completed || 0),
       days: Object.assign({}, sa.days || {}, sb.days || {}),
     };
-    return { custom, progress, deleted, stats, t: Date.now() };
+    return { custom, progress, deleted, brushes, stats, t: Date.now() };
   }
 
   /* 클라우드에서 내려받아 로컬과 병합 → 로컬 저장 */

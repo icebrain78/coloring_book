@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.1"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.2"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -62,10 +62,13 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, cvs.width, cvs.height);
     ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
-    // 사진 도안이면 현재 브러시 질감 그대로 내보내기
-    const kind = art.custom && engine.art === art ? engine._brushKind() : "flat";
+    // 사진 도안이면 조각별 브러시(기록) 그대로 내보내기
+    const isCur = art.custom && engine.art === art;
+    const globalKind = isCur ? engine._brushKind() : "flat";
+    const bmap = (isCur && engine.brushMap) || {};
     art.regions.forEach((r, i) => {
       const hex = art.palette[r.c].hex;
+      const kind = bmap[i] || globalKind;
       const fill = kind === "flat"
         ? hex
         : ctx.createPattern(engine._brushTile(hex, engine._variantOf(i), kind), "repeat");

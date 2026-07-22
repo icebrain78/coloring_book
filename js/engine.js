@@ -33,6 +33,22 @@
     return loadAllProgress()[artId] || [];
   }
 
+  /* 조각별 브러시 기록: { 도안id: { 조각index: 브러시종류 } } */
+  const BRUSH_KEY = "coloring:brushes:v1";
+  function loadBrushMap(artId) {
+    try {
+      return (JSON.parse(localStorage.getItem(BRUSH_KEY)) || {})[artId] || {};
+    } catch (e) { return {}; }
+  }
+  function saveBrushMap(artId, map) {
+    try {
+      const all = JSON.parse(localStorage.getItem(BRUSH_KEY)) || {};
+      all[artId] = map;
+      localStorage.setItem(BRUSH_KEY, JSON.stringify(all));
+    } catch (e) {}
+    if (window.Cloud) window.Cloud.schedulePush();
+  }
+
   /* ── 영역 shape → SVG 엘리먼트 생성 ── */
   function createRegionEl(region) {
     let el;
@@ -96,6 +112,7 @@
       this.art = art;
       this.selected = 0;
       this.filled = new Set(getProgress(art.id));
+      this.brushMap = loadBrushMap(art.id); // 조각별로 칠할 때 쓴 브러시
       this.scale = 1;
       this.tx = 0;
       this.ty = 0;
@@ -152,14 +169,8 @@
           const next = BRUSHES[(BRUSHES.indexOf(k) + 1) % BRUSHES.length];
           localStorage.setItem("coloring:brush:v1", next);
           syncTex();
-          // 이미 칠한 조각들 새 브러시로 다시 채우기
-          this.filled.forEach((i) => {
-            const { shape, region } = this.regionEls[i];
-            shape.style.fill = next === "flat"
-              ? this.art.palette[region.c].hex
-              : this._svgBrushFill(region.c, this._variantOf(i));
-          });
-          this._previewCanvasFor = null; // 완성본 미리보기 다시 렌더
+          // 이미 칠한 조각은 그대로 — 앞으로 칠하는 조각에만 적용
+          this._previewCanvasFor = null; // 완성본 미리보기(미완 부분)만 갱신
         };
         syncTex();
         top.append(back, title, texBtn, muteBtn, previewBtn, this.progressEl);
@@ -503,8 +514,8 @@
     }
 
     /* SVG <pattern>으로 등록하고 fill용 url 반환 */
-    _svgBrushFill(c, v) {
-      const kind = this._brushKind();
+    _svgBrushFill(c, v, kindArg) {
+      const kind = kindArg || this._brushKind();
       const hex = this.art.palette[c].hex;
       const id = "bt-" + kind + "-" + hex.slice(1) + "-" + v;
       if (!this._defs) {
@@ -750,7 +761,7 @@
       const art = this.art;
       const vw = art.w || 1000, vh = art.h || 1000;
       // 완성본은 도안당 한 번만 렌더해서 재사용(질감 설정 바뀌면 다시)
-      const cacheKey = art.id + ":" + this._brushKind();
+      const cacheKey = art.id + ":" + this._brushKind() + ":" + this.filled.size;
       if (!this._previewCanvas || this._previewCanvasFor !== cacheKey) {
         const cvs = document.createElement("canvas");
         const W = 1400;
@@ -760,9 +771,10 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, cvs.width, cvs.height);
         ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
-        const kind = this._brushKind();
+        const globalKind = this._brushKind();
         art.regions.forEach((r, i) => {
           const hex = art.palette[r.c].hex;
+          const kind = (this.brushMap && this.brushMap[i]) || globalKind;
           const fill = kind === "flat"
             ? hex
             : ctx.createPattern(this._brushTile(hex, this._variantOf(i), kind), "repeat");
@@ -876,6 +888,10 @@
       if (this.filled.has(i)) return;     // 이미 칠함
       const region = this.art.regions[i];
       if (region.c === this.selected) {
+        if (this.art.custom) {
+          this.brushMap[i] = this._brushKind(); // 이 조각에 쓴 브러시 기록
+          saveBrushMap(this.art.id, this.brushMap);
+        }
         this._paint(i, true);
         this.filled.add(i);
         saveProgress(this.art.id, [...this.filled]);
@@ -898,9 +914,10 @@
       const { shape, text, region } = this.regionEls[i];
       // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
       const hex = this.art.palette[region.c].hex;
-      shape.style.fill = this._brushKind() === "flat"
+      const kind = (this.brushMap && this.brushMap[i]) || this._brushKind();
+      shape.style.fill = kind === "flat"
         ? hex
-        : this._svgBrushFill(region.c, this._variantOf(i));
+        : this._svgBrushFill(region.c, this._variantOf(i), kind);
       // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈
       if (this.art.custom) shape.style.stroke = hex;
       // 미니맵에도 칠하기

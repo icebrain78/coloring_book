@@ -184,6 +184,164 @@ window.PhotoConverter = (function () {
     return { grid, count: map.size };
   }
 
+  /*
+   * ── 방향장(orientation field) ──
+   * 이미지의 결(그라디언트의 수직 방향)을 계산하고 부드럽게 편 각도 맵.
+   * 붓터치가 이 방향을 따라 흐른다. 결이 약한 평평한 영역은 주변 방향을
+   * 물려받고, 그래도 없으면 은은하게 굽이치는 기본 흐름을 쓴다.
+   */
+  function orientationField(cells, cols, rows) {
+    const N = cols * rows;
+    const lum = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      lum[i] = 0.299 * cells[i][0] + 0.587 * cells[i][1] + 0.114 * cells[i][2];
+    }
+    // 3×3 블러
+    const bl = new Float32Array(N);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        let s = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+            s += lum[ny * cols + nx]; n++;
+          }
+        }
+        bl[y * cols + x] = s / n;
+      }
+    }
+    // Sobel → 획 방향(그라디언트 수직)을 배각(2θ) 벡터로
+    let vx = new Float32Array(N), vy = new Float32Array(N);
+    for (let y = 1; y < rows - 1; y++) {
+      for (let x = 1; x < cols - 1; x++) {
+        const i = y * cols + x;
+        const gx =
+          bl[i - cols + 1] + 2 * bl[i + 1] + bl[i + cols + 1] -
+          bl[i - cols - 1] - 2 * bl[i - 1] - bl[i + cols - 1];
+        const gy =
+          bl[i + cols - 1] + 2 * bl[i + cols] + bl[i + cols + 1] -
+          bl[i - cols - 1] - 2 * bl[i - cols] - bl[i - cols + 1];
+        const theta = Math.atan2(gy, gx) + Math.PI / 2;
+        const mag = Math.hypot(gx, gy);
+        vx[i] = mag * Math.cos(2 * theta);
+        vy[i] = mag * Math.sin(2 * theta);
+      }
+    }
+    // 방향 스무딩(3회) — 결이 약한 곳이 주변 흐름을 물려받게
+    for (let pass = 0; pass < 3; pass++) {
+      const nvx = new Float32Array(N), nvy = new Float32Array(N);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          let sx = 0, sy = 0, n = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx2 = x + dx, ny2 = y + dy;
+              if (nx2 < 0 || ny2 < 0 || nx2 >= cols || ny2 >= rows) continue;
+              const j = ny2 * cols + nx2;
+              sx += vx[j]; sy += vy[j]; n++;
+            }
+          }
+          nvx[y * cols + x] = sx / n;
+          nvy[y * cols + x] = sy / n;
+        }
+      }
+      vx = nvx; vy = nvy;
+    }
+    const ang = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const m = Math.hypot(vx[i], vy[i]);
+      if (m < 0.6) {
+        // 결이 없는 곳: 은은하게 굽이치는 기본 흐름
+        const x = i % cols, y = (i / cols) | 0;
+        ang[i] = 0.55 * Math.sin(x * 0.045 + y * 0.02) + 0.55 * Math.cos(y * 0.038);
+      } else {
+        ang[i] = Math.atan2(vy[i], vx[i]) / 2;
+      }
+    }
+    return ang;
+  }
+
+  /*
+   * ── 유화 붓터치 합성 ──
+   * 방향장을 따라 흐르는 붓터치를 촘촘히 그려서 라벨 grid를 만든다.
+   * 획은 색이 뚜렷이 바뀌는 경계를 넘지 않으므로 형태는 유지되고,
+   * 평평한 영역도 전부 획 조각으로 나뉜다(조각 하나 = 붓터치 하나).
+   */
+  function oilStrokes(cells, cols, rows, strokeW, strokeLen) {
+    const N = cols * rows;
+    const ang = orientationField(cells, cols, rows);
+    const labels = new Int32Array(N).fill(-1);
+    const r = Math.max(1, strokeW / 2);
+    const spacing = Math.max(1.5, strokeW * 0.9);
+    const tol = 34 * 34 * 3; // 획이 넘지 못하는 색 경계(RGB 거리²)
+
+    // 살짝 흔들린 격자 위치를 무작위 순서로
+    const pos = [];
+    for (let y = 0; y < rows; y += spacing) {
+      for (let x = 0; x < cols; x += spacing) {
+        pos.push([
+          x + (Math.random() - 0.5) * spacing,
+          y + (Math.random() - 0.5) * spacing,
+        ]);
+      }
+    }
+    for (let i = pos.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const t = pos[i]; pos[i] = pos[j]; pos[j] = t;
+    }
+
+    const stamp = (fx, fy, lab) => {
+      const x0 = Math.max(0, Math.round(fx - r)), x1 = Math.min(cols - 1, Math.round(fx + r));
+      const y0 = Math.max(0, Math.round(fy - r)), y1 = Math.min(rows - 1, Math.round(fy + r));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - fx, dy = y - fy;
+          if (dx * dx + dy * dy <= r * r) labels[y * cols + x] = lab;
+        }
+      }
+    };
+
+    let id = 0;
+    for (const p of pos) {
+      const cx = Math.min(cols - 1, Math.max(0, p[0]));
+      const cy = Math.min(rows - 1, Math.max(0, p[1]));
+      const c0 = cells[(cy | 0) * cols + (cx | 0)];
+      const path = [[cx, cy]];
+      // 시작점에서 양방향으로 방향장을 따라 걷기(곡선 획)
+      for (const dir of [1, -1]) {
+        let x = cx, y = cy;
+        for (let s = 0; s < strokeLen / 2; s++) {
+          const a = ang[(y | 0) * cols + (x | 0)];
+          const nx = x + Math.cos(a) * dir;
+          const ny = y + Math.sin(a) * dir;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) break;
+          const c = cells[(ny | 0) * cols + (nx | 0)];
+          const dr = c[0] - c0[0], dg = c[1] - c0[1], db = c[2] - c0[2];
+          if (dr * dr + dg * dg + db * db > tol) break; // 색 경계에서 멈춤
+          x = nx; y = ny;
+          if (dir === 1) path.push([x, y]); else path.unshift([x, y]);
+        }
+      }
+      for (const q of path) stamp(q[0], q[1], id);
+      id++;
+    }
+
+    // 아직 안 덮인 셀은 가장 가까운 획으로 채움(다중 시작 BFS)
+    const queue = [];
+    for (let i = 0; i < N; i++) if (labels[i] !== -1) queue.push(i);
+    let head = 0;
+    while (head < queue.length) {
+      const i = queue[head++];
+      const x = i % cols, y = (i / cols) | 0;
+      if (x > 0 && labels[i - 1] === -1) { labels[i - 1] = labels[i]; queue.push(i - 1); }
+      if (x < cols - 1 && labels[i + 1] === -1) { labels[i + 1] = labels[i]; queue.push(i + 1); }
+      if (y > 0 && labels[i - cols] === -1) { labels[i - cols] = labels[i]; queue.push(i - cols); }
+      if (y < rows - 1 && labels[i + cols] === -1) { labels[i + cols] = labels[i]; queue.push(i + cols); }
+    }
+    return { grid: labels, count: id };
+  }
+
   /* 라벨 grid 기준으로 벡터(vecs)의 라벨별 평균 */
   function averageBy(grid, vecs, count) {
     const dim = vecs[0].length;
@@ -385,11 +543,18 @@ window.PhotoConverter = (function () {
     cells = unsharp(cells, cols, rows, 0.7);
     const labCells = cells.map(rgb2lab);
 
-    // 3) 그래프 세그멘테이션: 격자 색 양자화 대신 경계 기반으로 영역을
-    //    키운다. 색이 서서히 변하는 긴 붓터치는 한 조각으로 이어지고
-    //    뚜렷한 이음새에서만 끊겨 획의 길쭉한 형태가 살아남는다.
-    const fhK = opts.fhK || 9;
-    const seg = fhSegment(labCells, cols, rows, fhK);
+    // 3) 영역 나누기 — 두 방식:
+    //    'oil' 유화 붓터치 합성(기본): 방향장을 따라 획을 그려서 평평한
+    //          영역까지 전부 붓터치 조각으로 나눈다.
+    //    'seg' 그래프 세그멘테이션: 색 경계를 따라 영역을 키운다.
+    let seg;
+    if (opts.style === "seg") {
+      const fhK = opts.fhK || 9;
+      seg = fhSegment(labCells, cols, rows, fhK);
+    } else {
+      const strokeW = Math.max(2.4, cols / 85);
+      seg = oilStrokes(cells, cols, rows, strokeW, strokeW * 4.5);
+    }
     let segLab = averageBy(seg.grid, labCells, seg.count);
 
     // 4) 작은 조각 병합(주변과 대비 큰 조각 — 눈동자 등 — 은 보존)

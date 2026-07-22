@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v0.8"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v0.9"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -23,7 +23,7 @@
   function saveCustomArt(art) {
     const list = loadCustom();
     list.unshift(art);
-    while (list.length > 6) list.pop(); // 용량 보호(세밀 도안은 데이터가 큼)
+    while (list.length > 4) list.pop(); // 용량 보호(유화 세밀 도안은 도안당 1~2MB)
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); }
     catch (e) { alert("저장 공간이 부족해요. 기존 사진 도안을 지운 뒤 다시 시도해주세요."); }
   }
@@ -194,9 +194,10 @@
     preview.className = "cv-preview";
     preview.innerHTML = '<span class="cv-hint">사진을 선택하면 여기에 미리보기가 나와요</span>';
 
-    // 옵션: 색 개수 / 정밀도
+    // 옵션: 색 개수 / 정밀도 / 스타일
     const optColors = segmented("색 개수", ["16", "20", "24", "32"], 2); // 기본 24
     const optDetail = segmented("정밀도", ["쉬움", "보통", "자세히", "최고"], 2); // 기본 자세히
+    const optStyle = segmented("스타일", ["유화 붓터치", "영역 따라"], 0); // 기본 유화
 
     const info = document.createElement("div");
     info.className = "cv-info";
@@ -211,7 +212,7 @@
     startBtn.textContent = "이 그림 색칠 시작";
     startBtn.style.display = "none";
 
-    body.append(pickBtn, preview, optColors.el, optDetail.el, info, makeBtn, startBtn, fileInput);
+    body.append(pickBtn, preview, optColors.el, optDetail.el, optStyle.el, info, makeBtn, startBtn, fileInput);
     converterEl.append(top, body);
 
     // 파일 로드
@@ -250,7 +251,8 @@
       setTimeout(() => {
         const colors = parseInt(optColors.value(), 10);
         const d = DETAIL[optDetail.value()];
-        builtArt = PhotoConverter.convert(pickedImg, { colors, cols: d.cols, minRegion: d.minRegion, fhK: d.fhK });
+        const style = optStyle.value() === "유화 붓터치" ? "oil" : "seg";
+        builtArt = PhotoConverter.convert(pickedImg, { colors, cols: d.cols, minRegion: d.minRegion, fhK: d.fhK, style });
         // 완성 색상 미리보기
         preview.innerHTML = "";
         preview.appendChild(buildThumb(builtArt, [], true));

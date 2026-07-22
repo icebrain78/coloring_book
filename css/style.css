@@ -155,7 +155,12 @@ button:disabled { opacity: 0.55; }
   fill: #ffffff; stroke: #cfcfd6; stroke-width: 2.5;
   transition: fill 0.15s ease;
 }
-.region.target { stroke: var(--brand); stroke-width: 4; animation: targetPulse 1.4s ease-in-out infinite; }
+.region.target {
+  stroke: #2e2e3a; stroke-width: 4;            /* 진한 테두리 */
+  fill: #ece7fd;                               /* 옅은 보라 배경(칠할 곳 표시) */
+  animation: targetPulse 1.4s ease-in-out infinite;
+}
+.region-num.target-num { fill: #2e2e3a; font-weight: 800; }
 .region.filled { stroke: rgba(0,0,0,0.12); }
 .region.pop { animation: pop 0.28s ease; }
 .region.shake { animation: shake 0.32s ease; }
@@ -251,7 +256,7 @@ button:disabled { opacity: 0.55; }
 
 /* 사진 도안: 얇은 윤곽선(색이 많고 영역이 작아서) */
 .custom-art .region { stroke-width: 0.55; stroke: #c9ccd4; }
-.custom-art .region.target { stroke-width: 1.4; }
+.custom-art .region.target { stroke-width: 1.6; stroke: #2e2e3a; }
 .custom-art .region.filled { stroke-width: 2.2; } /* stroke 색은 JS가 fill과 동일하게 지정 */
 
 /* ───────── 완성 오버레이 ───────── */

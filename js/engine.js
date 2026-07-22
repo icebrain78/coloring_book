@@ -354,10 +354,11 @@
       this.swatchEls.forEach((b, i) =>
         b.classList.toggle("active", i === idx)
       );
-      // 선택한 번호에 해당하는 남은 영역 강조
-      this.regionEls.forEach(({ shape, region }, i) => {
+      // 선택한 번호에 해당하는 남은 영역 강조(테두리+배경+숫자 모두)
+      this.regionEls.forEach(({ shape, text, region }, i) => {
         const isTarget = region.c === idx && !this.filled.has(i);
         shape.classList.toggle("target", isTarget);
+        if (text) text.classList.toggle("target-num", isTarget);
       });
     }
 

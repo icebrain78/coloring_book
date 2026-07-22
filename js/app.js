@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v1.9"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.0"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -62,7 +62,15 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, cvs.width, cvs.height);
     ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
-    art.regions.forEach((r) => engine._drawRegionOnCtx(ctx, r, art.palette[r.c].hex));
+    // 사진 도안 + 질감 켜짐이면 브러시 질감으로 내보내기
+    const tex = art.custom && engine._texEnabled && engine.art === art && engine._texEnabled();
+    art.regions.forEach((r, i) => {
+      const hex = art.palette[r.c].hex;
+      const fill = tex
+        ? ctx.createPattern(engine._brushTile(hex, engine._variantOf(i)), "repeat")
+        : hex;
+      engine._drawRegionOnCtx(ctx, r, fill);
+    });
     cvs.toBlob(async (blob) => {
       const file = new File([blob], (art.title || "컬러링") + ".png", { type: "image/png" });
       // 모바일: 공유 시트(카톡 등), 미지원 시 다운로드

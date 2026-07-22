@@ -135,7 +135,32 @@
       previewBtn.className = "c-preview-btn";
       previewBtn.textContent = "완성본";
       previewBtn.onclick = () => this._togglePreview();
-      top.append(back, title, muteBtn, previewBtn, this.progressEl);
+      if (art.custom) {
+        // 유화 질감 토글(사진 도안 전용)
+        const texBtn = document.createElement("button");
+        texBtn.className = "c-mute-btn";
+        const syncTex = () => {
+          texBtn.textContent = "🖌️";
+          texBtn.style.opacity = this._texEnabled() ? "1" : "0.35";
+          texBtn.title = "유화 질감 " + (this._texEnabled() ? "끄기" : "켜기");
+        };
+        texBtn.onclick = () => {
+          localStorage.setItem("coloring:texture:v1", this._texEnabled() ? "0" : "1");
+          syncTex();
+          // 이미 칠한 조각들 다시 채우기
+          this.filled.forEach((i) => {
+            const { shape, region } = this.regionEls[i];
+            shape.style.fill = this._texEnabled()
+              ? this._svgBrushFill(region.c, this._variantOf(i))
+              : this.art.palette[region.c].hex;
+          });
+          this._previewCanvasFor = null; // 완성본 미리보기 다시 렌더
+        };
+        syncTex();
+        top.append(back, title, texBtn, muteBtn, previewBtn, this.progressEl);
+      } else {
+        top.append(back, title, muteBtn, previewBtn, this.progressEl);
+      }
 
       /* 캔버스 영역(줌 무대) */
       const stage = document.createElement("div");
@@ -171,6 +196,8 @@
       this._targeted = []; // 현재 강조 중인 조각 index들
       this._activeSwatch = null;
       this._numsHidden = null;
+      this._defs = null; // 브러시 패턴 정의(svg별로 새로 생성)
+      this._patterns = {};
 
       /* 하단 팔레트 */
       const palette = document.createElement("div");
@@ -347,6 +374,98 @@
       }, 20000);
     }
 
+    /* ── 유화 브러시 질감 ──
+       색마다 붓결 타일(밝은/어두운 스트로크)을 3방향으로 만들어두고,
+       조각마다 고정 시드 랜덤으로 하나를 골라 채운다 → 이웃 조각끼리
+       붓 방향이 달라져 단색 느낌이 사라진다. */
+    _texEnabled() {
+      return !!this.art.custom && localStorage.getItem("coloring:texture:v1") !== "0";
+    }
+
+    _variantOf(i) {
+      return ((i * 2654435761) >>> 0) % 3; // 조각별 고정 '랜덤' 변형
+    }
+
+    /* 붓결 타일 캔버스(색+변형별 1회 생성, 전역 캐시) */
+    _brushTile(hex, v) {
+      if (!ColoringEngine._tiles) ColoringEngine._tiles = {};
+      const key = hex + v;
+      if (ColoringEngine._tiles[key]) return ColoringEngine._tiles[key];
+      const S = 128;
+      const cvs = document.createElement("canvas");
+      cvs.width = S; cvs.height = S;
+      const g = cvs.getContext("2d");
+      g.fillStyle = hex;
+      g.fillRect(0, 0, S, S);
+      // 고정 시드 난수(같은 색·변형이면 항상 같은 질감)
+      let seed = v * 7349 + 11;
+      for (let k = 0; k < hex.length; k++) seed = (seed * 31 + hex.charCodeAt(k)) >>> 0;
+      const rnd = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      const ang = [0.35, -0.65, 1.25][v % 3] + (rnd() - 0.5) * 0.25;
+      g.translate(S / 2, S / 2);
+      g.rotate(ang);
+      g.translate(-S / 2, -S / 2);
+      g.lineCap = "round";
+      // 긴 붓결(은은하게)
+      for (let k = 0; k < 22; k++) {
+        const y = rnd() * S * 2 - S * 0.5;
+        const light = rnd() > 0.5;
+        g.strokeStyle = light
+          ? "rgba(255,255,255," + (0.03 + rnd() * 0.07).toFixed(3) + ")"
+          : "rgba(0,0,0," + (0.025 + rnd() * 0.06).toFixed(3) + ")";
+        g.lineWidth = 2.5 + rnd() * 6;
+        g.beginPath();
+        g.moveTo(-S * 0.6, y);
+        g.quadraticCurveTo(S * 0.5, y + (rnd() - 0.5) * 16, S * 1.6, y + (rnd() - 0.5) * 14);
+        g.stroke();
+      }
+      // 짧은 붓터치(불규칙한 덧칠 느낌)
+      for (let k = 0; k < 14; k++) {
+        const x = rnd() * S * 1.6 - S * 0.3;
+        const y = rnd() * S * 1.6 - S * 0.3;
+        const len = 14 + rnd() * 30;
+        const light = rnd() > 0.45;
+        g.strokeStyle = light
+          ? "rgba(255,255,255," + (0.04 + rnd() * 0.08).toFixed(3) + ")"
+          : "rgba(0,0,0," + (0.03 + rnd() * 0.07).toFixed(3) + ")";
+        g.lineWidth = 3 + rnd() * 6;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.quadraticCurveTo(x + len * 0.5, y + (rnd() - 0.5) * 8, x + len, y + (rnd() - 0.5) * 6);
+        g.stroke();
+      }
+      ColoringEngine._tiles[key] = cvs;
+      return cvs;
+    }
+
+    /* SVG <pattern>으로 등록하고 fill용 url 반환 */
+    _svgBrushFill(c, v) {
+      const hex = this.art.palette[c].hex;
+      const id = "bt-" + hex.slice(1) + "-" + v;
+      if (!this._defs) {
+        this._defs = document.createElementNS(SVGNS, "defs");
+        this.svg.insertBefore(this._defs, this.svg.firstChild);
+      }
+      if (!this._patterns[id]) {
+        const pat = document.createElementNS(SVGNS, "pattern");
+        pat.setAttribute("id", id);
+        pat.setAttribute("patternUnits", "userSpaceOnUse");
+        pat.setAttribute("width", "90");
+        pat.setAttribute("height", "90");
+        const img = document.createElementNS(SVGNS, "image");
+        img.setAttribute("href", this._brushTile(hex, v).toDataURL("image/png"));
+        img.setAttribute("width", "90");
+        img.setAttribute("height", "90");
+        pat.appendChild(img);
+        this._defs.appendChild(pat);
+        this._patterns[id] = true;
+      }
+      return "url(#" + id + ")";
+    }
+
     /* 색칠 효과음(짧은 틱) + 진동 */
     _tick() {
       if (this.muted) return;
@@ -500,8 +619,9 @@
       }
       const art = this.art;
       const vw = art.w || 1000, vh = art.h || 1000;
-      // 완성본은 도안당 한 번만 렌더해서 재사용
-      if (!this._previewCanvas || this._previewCanvasFor !== art.id) {
+      // 완성본은 도안당 한 번만 렌더해서 재사용(질감 설정 바뀌면 다시)
+      const cacheKey = art.id + (this._texEnabled() ? ":tex" : ":flat");
+      if (!this._previewCanvas || this._previewCanvasFor !== cacheKey) {
         const cvs = document.createElement("canvas");
         const W = 1400;
         cvs.width = W;
@@ -510,9 +630,16 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, cvs.width, cvs.height);
         ctx.setTransform(W / vw, 0, 0, W / vw, 0, 0);
-        art.regions.forEach((r) => this._drawRegionOnCtx(ctx, r, art.palette[r.c].hex));
+        const tex = this._texEnabled();
+        art.regions.forEach((r, i) => {
+          const hex = art.palette[r.c].hex;
+          const fill = tex
+            ? ctx.createPattern(this._brushTile(hex, this._variantOf(i)), "repeat")
+            : hex;
+          this._drawRegionOnCtx(ctx, r, fill);
+        });
         this._previewCanvas = cvs;
-        this._previewCanvasFor = art.id;
+        this._previewCanvasFor = cacheKey;
       }
       const div = document.createElement("div");
       div.className = "c-preview";
@@ -640,7 +767,9 @@
       const { shape, text, region } = this.regionEls[i];
       // 인라인 style로 칠해야 CSS(.region{fill}) 규칙을 이깁니다
       const hex = this.art.palette[region.c].hex;
-      shape.style.fill = hex;
+      shape.style.fill = this._texEnabled()
+        ? this._svgBrushFill(region.c, this._variantOf(i))
+        : hex;
       // 사진 도안: 경계선도 같은 색으로 → 완성 부분이 이음새 없이 매끈
       if (this.art.custom) shape.style.stroke = hex;
       // 미니맵에도 칠하기

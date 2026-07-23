@@ -1,0 +1,123 @@
+name: 안드로이드 릴리스 AAB (스토어용)
+
+# 수동 실행 전용. 결과는 서명된 app-release.aab → Play Console 업로드용.
+# 필요한 GitHub Secrets (Settings → Secrets and variables → Actions):
+#   RELEASE_KEYSTORE_BASE64  : 업로드 keystore를 base64로 인코딩한 문자열
+#   RELEASE_KEYSTORE_PASSWORD: 키스토어 비밀번호
+#   RELEASE_KEY_PASSWORD     : 키 비밀번호
+#   RELEASE_KEY_ALIAS        : 키 별칭(upload)
+on:
+  workflow_dispatch:
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Java(JDK 17) 설치
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK 설치
+        uses: android-actions/setup-android@v3
+
+      - name: 웹 자산을 앱에 복사 (www/)
+        run: |
+          mkdir -p android-app/www
+          rsync -a --delete \
+            --exclude 'android-app' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'docs' \
+            --exclude 'supabase' \
+            --exclude 'README.md' \
+            ./ android-app/www/
+
+      - name: Capacitor 설치
+        working-directory: android-app
+        run: npm install
+
+      - name: 안드로이드 플랫폼 생성
+        working-directory: android-app
+        run: npx cap add android
+
+      - name: AndroidManifest 주입 (AdMob 앱 ID + 소셜 로그인 딥링크)
+        working-directory: android-app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "android/app/src/main/AndroidManifest.xml";
+            let s = fs.readFileSync(p, "utf8");
+            const appId = "ca-app-pub-7584566407757353~5974253070";
+            const meta = "    <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"" + appId + "\"/>\n";
+            if (!s.includes("com.google.android.gms.ads.APPLICATION_ID")) {
+              s = s.replace("</application>", meta + "    </application>");
+            }
+            const scheme = "io.github.icebrain78.coloring";
+            if (!s.includes("android:scheme=\"" + scheme + "\"")) {
+              const filter =
+                "            <intent-filter>\n" +
+                "                <action android:name=\"android.intent.action.VIEW\"/>\n" +
+                "                <category android:name=\"android.intent.category.DEFAULT\"/>\n" +
+                "                <category android:name=\"android.intent.category.BROWSABLE\"/>\n" +
+                "                <data android:scheme=\"" + scheme + "\"/>\n" +
+                "            </intent-filter>\n";
+              s = s.replace("</activity>", filter + "        </activity>");
+            }
+            fs.writeFileSync(p, s);
+            console.log("Manifest 주입 완료");
+          '
+
+      - name: 버전 설정 (versionCode = run_number)
+        working-directory: android-app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "android/app/build.gradle";
+            let s = fs.readFileSync(p, "utf8");
+            const vc = process.env.GITHUB_RUN_NUMBER || "1";
+            s = s.replace(/versionCode\s+\d+/, "versionCode " + vc);
+            s = s.replace(/versionName\s+"[^"]*"/, "versionName \"1.0." + vc + "\"");
+            fs.writeFileSync(p, s);
+            console.log("versionCode=" + vc);
+          '
+
+      - name: 앱 아이콘/스플래시 생성 (실패해도 계속)
+        working-directory: android-app
+        run: npx @capacitor/assets generate --android || true
+
+      - name: 웹 자산 동기화
+        working-directory: android-app
+        run: npx cap sync android
+
+      - name: 키스토어 복원 (secret → 파일)
+        working-directory: android-app/android
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > upload.keystore
+          echo "키스토어 크기: $(wc -c < upload.keystore) bytes"
+
+      - name: 릴리스 AAB 빌드(서명)
+        working-directory: android-app/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=$(pwd)/upload.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
+
+      - name: AAB 업로드(Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mooldeulim-release-aab
+          path: android-app/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error

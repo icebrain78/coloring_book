@@ -60,6 +60,15 @@ window.Cloud = (function () {
     };
   }
 
+  // 액세스 토큰으로 사용자 정보 조회(소셜 로그인은 응답에 user가 없음)
+  async function fetchUser(accessToken) {
+    const res = await fetch(CFG.url + "/auth/v1/user", {
+      headers: { apikey: CFG.anonKey, Authorization: "Bearer " + accessToken },
+    });
+    if (!res.ok) throw new Error("사용자 정보를 가져오지 못했어요");
+    return res.json();
+  }
+
   async function signup(email, password) {
     const data = await authFetch("/auth/v1/signup", { email, password });
     if (data.access_token) {
@@ -82,6 +91,88 @@ window.Cloud = (function () {
   function logout() {
     saveSession(null);
     setStatus("out");
+  }
+
+  /* ── 소셜 로그인 (Google · Kakao) — Supabase OAuth ──
+     웹: authorize로 이동 → 돌아오면 URL #해시에 토큰 → checkOAuthRedirect가 처리
+     앱: 시스템 브라우저로 열고 커스텀 스킴 딥링크로 토큰 수신 */
+  function oauthUrl(provider, redirectTo) {
+    return (
+      CFG.url + "/auth/v1/authorize?provider=" + encodeURIComponent(provider) +
+      "&redirect_to=" + encodeURIComponent(redirectTo)
+    );
+  }
+
+  async function completeOAuth(params) {
+    const accessToken = params.get("access_token");
+    if (!accessToken) {
+      const err = params.get("error_description") || params.get("error");
+      if (err) throw new Error(decodeURIComponent(err.replace(/\+/g, " ")));
+      return false;
+    }
+    const user = await fetchUser(accessToken);
+    saveSession({
+      access_token: accessToken,
+      refresh_token: params.get("refresh_token"),
+      expires_at: Date.now() + (parseInt(params.get("expires_in") || "3600", 10)) * 1000,
+      user: { id: user.id, email: user.email },
+    });
+    await pullMerge();
+    schedulePush(0);
+    return true;
+  }
+
+  // 앱 시작 시 1회: 소셜 로그인 후 돌아온 URL(#access_token=...)이면 세션 확립
+  async function checkOAuthRedirect() {
+    if (!enabled) return false;
+    const hash = location.hash || "";
+    if (hash.indexOf("access_token=") < 0 && hash.indexOf("error=") < 0) return false;
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    history.replaceState(null, "", location.pathname + location.search); // 해시 정리
+    try {
+      return await completeOAuth(params);
+    } catch (e) {
+      setStatus("error", e.message);
+      throw e;
+    }
+  }
+
+  async function oauth(provider) {
+    if (!enabled) throw new Error("클라우드가 설정되지 않았어요");
+    const Cap = window.Capacitor;
+    const native = Cap && typeof Cap.isNativePlatform === "function" && Cap.isNativePlatform();
+    if (native) return oauthNative(provider);
+    // 웹: 현재 페이지로 되돌아오게 하고 이동(반환 없음 — 페이지 전환됨)
+    location.href = oauthUrl(provider, location.origin + location.pathname);
+    return new Promise(() => {});
+  }
+
+  // 앱(Capacitor): 시스템 브라우저 + 커스텀 스킴 딥링크로 토큰 회수
+  async function oauthNative(provider) {
+    const Cap = window.Capacitor;
+    const Browser = Cap.Plugins && Cap.Plugins.Browser;
+    const App = Cap.Plugins && Cap.Plugins.App;
+    if (!Browser || !App) throw new Error("브라우저 플러그인이 없어요");
+    const redirectTo = "io.github.icebrain78.coloring://login-callback";
+    return new Promise((resolve, reject) => {
+      let handle = null;
+      const finish = (fn, arg) => {
+        if (handle && handle.remove) handle.remove();
+        Browser.close().catch(() => {});
+        fn(arg);
+      };
+      App.addListener("appUrlOpen", async (data) => {
+        const url = (data && data.url) || "";
+        if (url.indexOf("login-callback") < 0) return;
+        const hi = url.indexOf("#");
+        if (hi < 0) { finish(reject, new Error("로그인 응답이 올바르지 않아요")); return; }
+        try {
+          const ok = await completeOAuth(new URLSearchParams(url.substring(hi + 1)));
+          finish(resolve, ok);
+        } catch (e) { finish(reject, e); }
+      }).then((h) => { handle = h; });
+      Browser.open({ url: oauthUrl(provider, redirectTo) }).catch((e) => finish(reject, e));
+    });
   }
 
   async function ensureToken() {
@@ -268,6 +359,7 @@ window.Cloud = (function () {
     state: () => lastState,
     onStatus: (cb) => { statusCb = cb; },
     signup, login, logout,
+    oauth, checkOAuthRedirect,
     init, pullMerge, schedulePush, pushNow,
     shareArt, fetchShared,
     mergeData, localData, writeLocal, // 백업 가져오기에서도 재사용

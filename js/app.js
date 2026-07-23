@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v3.1"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v3.2"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -180,6 +180,11 @@
       '<div class="auth-msg" id="auth-msg"></div>' +
       '<button type="submit" class="o-btn primary" id="auth-login">로그인</button>' +
       '<button type="button" class="o-btn" id="auth-signup">회원가입</button>' +
+      '<div class="auth-or"><span>또는</span></div>' +
+      '<button type="button" class="auth-social google" id="auth-google">' +
+      '<span class="auth-social-ic">G</span> 구글로 계속하기</button>' +
+      '<button type="button" class="auth-social kakao" id="auth-kakao">' +
+      '<span class="auth-social-ic">💬</span> 카카오로 계속하기</button>' +
       '<button type="button" class="auth-close" id="auth-close">닫기</button>' +
       "</form>";
     document.body.appendChild(el);
@@ -229,6 +234,26 @@
     };
     signupBtn.onclick = () =>
       run(Cloud.signup, signupBtn, "가입 중…", "가입 완료! 동기화가 켜졌어요 ☁️");
+
+    // 소셜 로그인(구글/카카오)
+    const social = async (provider, btn) => {
+      if (running) return;
+      msg.className = "auth-msg";
+      msg.textContent = "로그인 창을 여는 중…";
+      const orig = btn.textContent;
+      btn.disabled = true;
+      try {
+        const ok = await Cloud.oauth(provider); // 웹은 페이지 이동(반환 없음)
+        if (ok) { showGalleryRaw(); history.back(); }
+      } catch (e) {
+        msg.textContent = (e && e.message) || "소셜 로그인 실패";
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    };
+    el.querySelector("#auth-google").onclick = function () { social("google", this); };
+    el.querySelector("#auth-kakao").onclick = function () { social("kakao", this); };
+
     el.querySelector("#auth-close").onclick = () => history.back();
   }
 
@@ -329,6 +354,27 @@
     imp.textContent = "백업 불러오기";
     imp.onclick = () => impInput.click();
     bar.append(exp, imp, impInput);
+
+    // 광고 제거(앱에서만) — 결제 구조. Play Console 인앱상품 등록 후 작동.
+    if (window.Billing && Billing.available()) {
+      const noads = document.createElement("button");
+      noads.className = "g-account-btn";
+      if (Billing.removed()) {
+        noads.textContent = "광고 제거됨 ✓";
+        noads.disabled = true;
+      } else {
+        noads.textContent = "🚫 광고 제거";
+        noads.onclick = async () => {
+          noads.disabled = true;
+          const r = await Billing.buyRemoveAds();
+          noads.disabled = false;
+          if (r.ok) { AppToast("광고가 제거됐어요. 감사합니다!"); renderGallery(); }
+          else if (r.notReady) alert(r.message);
+          else alert(r.message || "결제에 실패했어요");
+        };
+      }
+      bar.appendChild(noads);
+    }
     header.appendChild(bar);
 
     // 통계 줄
@@ -801,6 +847,11 @@
       })
       .catch((e) => alert("공유 도안 가져오기 실패: " + e.message));
   })();
+
+  // 소셜 로그인(구글/카카오) 후 돌아온 경우: URL 해시의 토큰으로 세션 확립
+  Cloud.checkOAuthRedirect()
+    .then((ok) => { if (ok) showGallery(); })
+    .catch((e) => alert("소셜 로그인 실패: " + (e && e.message)));
 
   // 로그인돼 있으면 클라우드 내려받아 병합 후 갤러리 갱신
   let lastPull = Date.now();

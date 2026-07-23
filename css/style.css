@@ -70,6 +70,29 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 button:disabled { opacity: 0.55; }
 .auth-close { padding: 8px; color: var(--muted); font-size: 14px; }
 
+/* "또는" 구분선 */
+.auth-or {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 12px; margin: 2px 0;
+}
+.auth-or::before, .auth-or::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+/* 소셜 로그인 버튼 */
+.auth-social {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 13px; border-radius: 12px; font-size: 15px; font-weight: 600;
+  font-family: inherit; border: 1.5px solid var(--line); cursor: pointer;
+}
+.auth-social:active { transform: scale(0.98); }
+.auth-social .auth-social-ic {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 13px; font-weight: 800;
+}
+.auth-social.google { background: #fff; color: #3c4043; border-color: #dadce0; }
+.auth-social.google .auth-social-ic { color: #4285f4; }
+.auth-social.kakao { background: #fee500; color: #191600; border-color: #fee500; }
+
 .g-grid {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
 }

@@ -6,6 +6,7 @@
   "dependencies": {
     "@capacitor-community/admob": "^6.0.0",
     "@capacitor/app": "6.0.2",
+    "@capacitor/browser": "6.0.4",
     "@capacitor/core": "6.1.2"
   },
   "devDependencies": {

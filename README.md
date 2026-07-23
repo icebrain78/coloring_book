@@ -145,6 +145,50 @@ create policy "owner can delete" on public.shared_art
 공유 링크(`...?share=도안id`)를 받은 사람은 로그인 없이도 도안을 받아
 자기 갤러리에서 색칠할 수 있습니다.
 
+### 소셜 로그인 (구글 · 카카오) 설정
+
+로그인 창에 **"구글로 계속하기 / 카카오로 계속하기"** 버튼이 이미 있습니다.
+다만 아래 설정을 마쳐야 실제로 로그인됩니다(안 하면 버튼 눌렀을 때 오류).
+
+**공통(먼저):** Supabase → **Authentication → URL Configuration → Redirect URLs** 에
+아래 두 개를 추가:
+
+```
+https://icebrain78.github.io/coloring_book/     ← 웹
+io.github.icebrain78.coloring://login-callback  ← 안드로이드 앱(딥링크)
+```
+
+**① 구글**
+1. [Google Cloud Console](https://console.cloud.google.com) → **API·서비스 → OAuth 동의 화면** 설정
+2. **사용자 인증 정보 → OAuth 클라이언트 ID(웹)** 생성
+   - 승인된 리디렉션 URI: `https://ifjikwpmyfvzwetppnfx.supabase.co/auth/v1/callback`
+3. 발급된 **클라이언트 ID / 시크릿** 을 Supabase → **Authentication → Providers → Google** 에 붙여넣고 **Enable**
+
+**② 카카오**
+1. [Kakao Developers](https://developers.kakao.com) → **내 애플리케이션** 생성
+2. **카카오 로그인** 활성화 → **Redirect URI** 에
+   `https://ifjikwpmyfvzwetppnfx.supabase.co/auth/v1/callback` 등록
+3. **REST API 키 / (보안) Client Secret** 을 Supabase → **Providers → Kakao** 에 넣고 **Enable**
+
+> 네이버는 Supabase 기본 제공 목록에 없어 별도 서버(Edge Function) 작업이 필요합니다.
+> 원하면 나중에 붙여 드릴게요. 지금은 구글·카카오 + 이메일 로그인이 동작합니다.
+
+---
+
+## 광고 제거 (인앱결제)
+
+갤러리 상단(앱에서만)에 **"🚫 광고 제거"** 버튼이 있고, 구조(`js/billing.js`)가
+준비돼 있습니다. 실제 결제가 되려면:
+
+1. [Play Console](https://play.google.com/console)($25 1회)에 앱 등록 → 내부테스트 트랙에 APK 올리기
+2. **수익 창출 → 인앱 상품** 에서 관리형 상품 추가 — **상품 ID: `remove_ads`**
+3. 결제 플러그인 연결(권장: **RevenueCat** `@revenuecat/purchases-capacitor`)
+   후 `js/billing.js` 의 `buyRemoveAds()`/`restore()` TODO 부분을 채우면 됩니다
+4. 구매 성공 시 `Ads.setRemoved(true)` 가 호출돼 **모든 광고가 꺼집니다**
+
+> 플러그인 연결 전까지 버튼은 "결제 준비 중" 안내만 표시합니다.
+> Play Console을 열고 상품(remove_ads)을 만든 뒤 알려주시면 결제 연결을 마무리해 드릴게요.
+
 ---
 
 ## 안드로이드 앱 만들기

@@ -52,22 +52,34 @@ jobs:
         working-directory: android-app
         run: npx cap add android
 
-      - name: AdMob 앱 ID 주입 (AndroidManifest)
+      - name: AndroidManifest 주입 (AdMob 앱 ID + 소셜 로그인 딥링크)
         working-directory: android-app
         run: |
           node -e '
             const fs = require("fs");
             const p = "android/app/src/main/AndroidManifest.xml";
             let s = fs.readFileSync(p, "utf8");
+            // 1) AdMob 앱 ID
             const appId = "ca-app-pub-7584566407757353~5974253070";
             const meta = "    <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"" + appId + "\"/>\n";
             if (!s.includes("com.google.android.gms.ads.APPLICATION_ID")) {
               s = s.replace("</application>", meta + "    </application>");
-              fs.writeFileSync(p, s);
               console.log("AdMob App ID 주입 완료");
-            } else {
-              console.log("이미 존재함");
-            }
+            } else { console.log("AdMob 이미 존재함"); }
+            // 2) 소셜 로그인 커스텀 스킴 딥링크(io.github.icebrain78.coloring://)
+            const scheme = "io.github.icebrain78.coloring";
+            if (!s.includes("android:scheme=\"" + scheme + "\"")) {
+              const filter =
+                "            <intent-filter>\n" +
+                "                <action android:name=\"android.intent.action.VIEW\"/>\n" +
+                "                <category android:name=\"android.intent.category.DEFAULT\"/>\n" +
+                "                <category android:name=\"android.intent.category.BROWSABLE\"/>\n" +
+                "                <data android:scheme=\"" + scheme + "\"/>\n" +
+                "            </intent-filter>\n";
+              s = s.replace("</activity>", filter + "        </activity>");
+              console.log("딥링크 스킴 주입 완료");
+            } else { console.log("딥링크 이미 존재함"); }
+            fs.writeFileSync(p, s);
           '
 
       - name: 앱 아이콘/스플래시 생성 (실패해도 계속)

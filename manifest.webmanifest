@@ -1,7 +1,7 @@
 {
-  "name": "컬러링 — 번호대로 색칠하기",
-  "short_name": "컬러링",
-  "description": "번호를 따라 색칠하는 힐링 컬러링. 광고 없음.",
+  "name": "물들임 — 번호대로 색칠하기",
+  "short_name": "물들임",
+  "description": "번호를 따라 색을 물들이는 힐링 컬러링. 광고 없음.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

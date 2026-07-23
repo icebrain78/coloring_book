@@ -243,7 +243,7 @@ window.Cloud = (function () {
     if (!enabled || !session) throw new Error("로그인이 필요해요");
     const id = (art.id + "-" + Date.now().toString(36)).replace(/[^a-z0-9-]/gi, "");
     await restFetch("POST", "/shared_art", [
-      { id, owner: session.user.id, title: art.title || "컬러링", payload: art },
+      { id, owner: session.user.id, title: art.title || "물들임", payload: art },
     ]);
     const base = location.origin + location.pathname;
     return base + "?share=" + encodeURIComponent(id);

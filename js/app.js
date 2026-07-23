@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.8"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.9"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -98,7 +98,7 @@
       engine._drawRegionOnCtx(ctx, r, fill);
     });
     cvs.toBlob(async (blob) => {
-      const file = new File([blob], (art.title || "컬러링") + ".png", { type: "image/png" });
+      const file = new File([blob], (art.title || "물들임") + ".png", { type: "image/png" });
       // 모바일: 공유 시트(카톡 등), 미지원 시 다운로드
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try { await navigator.share({ files: [file], title: art.title }); return; } catch (e) {}
@@ -143,7 +143,7 @@
     const blob = new Blob([JSON.stringify(Cloud.localData())], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "컬러링백업.json";
+    a.download = "물들임백업.json";
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -287,7 +287,7 @@
     const header = document.createElement("header");
     header.className = "g-header";
     header.innerHTML =
-      '<h1>🎨 컬러링</h1><p class="g-sub">번호대로 색칠하는 힐링 타임 · 광고 없음 · ' + APP_VERSION + "</p>";
+      '<h1>🎨 물들임</h1><p class="g-sub">번호대로 색을 물들이는 힐링 타임 · 광고 없음 · ' + APP_VERSION + "</p>";
 
     // 계정/백업 줄
     const bar = document.createElement("div");

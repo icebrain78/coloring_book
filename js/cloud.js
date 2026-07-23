@@ -119,19 +119,24 @@ window.Cloud = (function () {
   /* ── 로컬 데이터 읽기/쓰기 ── */
   function localData() {
     let custom = [], progress = {}, deleted = {}, stats = null, brushes = {};
-    try { custom = JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch (e) {}
+    // 대용량(도안·브러시)은 IndexedDB(AppDB), 나머지는 localStorage
+    if (window.AppDB) {
+      custom = window.AppDB.getCustom();
+      brushes = window.AppDB.getBrushes();
+    }
     try { progress = JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) {}
     try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) {}
     try { stats = JSON.parse(localStorage.getItem(STATS_KEY)); } catch (e) {}
-    try { brushes = JSON.parse(localStorage.getItem(BRUSHES_KEY)) || {}; } catch (e) {}
     return { custom, progress, deleted, brushes, stats: stats || { pieces: 0, completed: 0, days: {} }, t: Date.now() };
   }
   function writeLocal(data) {
-    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(data.custom)); } catch (e) {}
+    if (window.AppDB) {
+      window.AppDB.setCustom(data.custom || []);
+      window.AppDB.setBrushes(data.brushes || {});
+    }
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(data.progress)); } catch (e) {}
     try { localStorage.setItem(DELETED_KEY, JSON.stringify(data.deleted || {})); } catch (e) {}
     try { if (data.stats) localStorage.setItem(STATS_KEY, JSON.stringify(data.stats)); } catch (e) {}
-    try { localStorage.setItem(BRUSHES_KEY, JSON.stringify(data.brushes || {})); } catch (e) {}
   }
 
   /*

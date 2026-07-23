@@ -42,23 +42,16 @@
     return loadAllProgress()[artId] || [];
   }
 
-  /* 조각별 브러시 기록: { 도안id: { 조각index: 브러시종류 } } */
-  const BRUSH_KEY = "coloring:brushes:v1";
+  /* 조각별 브러시 기록: { 도안id: { 조각index: 브러시종류 } } — IndexedDB(AppDB) */
   function loadBrushMap(artId) {
-    try {
-      return (JSON.parse(localStorage.getItem(BRUSH_KEY)) || {})[artId] || {};
-    } catch (e) { return {}; }
+    const all = window.AppDB ? window.AppDB.getBrushes() : {};
+    return Object.assign({}, all[artId]); // 사본(엔진이 수정 후 save로 반영)
   }
   function saveBrushMap(artId, map) {
-    try {
-      const all = JSON.parse(localStorage.getItem(BRUSH_KEY)) || {};
+    if (window.AppDB) {
+      const all = window.AppDB.getBrushes();
       all[artId] = map;
-      localStorage.setItem(BRUSH_KEY, JSON.stringify(all));
-    } catch (e) {
-      if (!warnedSaveFail && window.AppToast) {
-        warnedSaveFail = true;
-        window.AppToast("⚠️ 저장 공간이 가득 차서 브러시 기록이 저장되지 않아요!");
-      }
+      window.AppDB.setBrushes(all);
     }
     if (window.Cloud) window.Cloud.schedulePush();
   }

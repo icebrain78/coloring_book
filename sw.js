@@ -12,6 +12,7 @@ const ASSETS = [
   "./assets/icon.svg",
   "./css/style.css",
   "./js/artworks.js",
+  "./js/storage.js",
   "./js/photo.js",
   "./js/cloud-config.js",
   "./js/cloud.js",

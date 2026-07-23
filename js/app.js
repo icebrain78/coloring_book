@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.7"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -112,23 +112,20 @@
   }
   window.AppShare = saveArtImage;
 
-  /* ── 내 사진 도안 저장소 ── */
+  /* ── 내 사진 도안 저장소 (IndexedDB — 용량 제한 사실상 없음) ── */
   function loadCustom() {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; }
-    catch (e) { return []; }
+    return AppDB.getCustom();
   }
   function saveCustomArt(art) {
     art.savedAt = Date.now(); // 동기화 병합 시 최신 판별용
-    const list = loadCustom();
+    const list = loadCustom().slice();
     list.unshift(art);
-    while (list.length > 4) list.pop(); // 용량 보호(유화 세밀 도안은 도안당 1~2MB)
-    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); }
-    catch (e) { alert("저장 공간이 부족해요. 기존 사진 도안을 지운 뒤 다시 시도해주세요."); }
+    while (list.length > 8) list.pop(); // 클라우드 보관 한도와 일치
+    AppDB.setCustom(list);
     Cloud.schedulePush();
   }
   function deleteCustom(id) {
-    const list = loadCustom().filter((a) => a.id !== id);
-    localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+    AppDB.setCustom(loadCustom().filter((a) => a.id !== id));
     const prog = ColoringStore.loadAllProgress();
     delete prog[id];
     localStorage.setItem("coloring:progress:v1", JSON.stringify(prog));
@@ -724,6 +721,8 @@
       state === "error" ? "동기화 실패(" + detail + ")" : "";
   });
 
+  AppDB.ready.then(boot);
+  function boot() {
   showGallery();
 
   // 공유 링크(?share=...)로 들어온 경우: 도안 내려받아 갤러리에 추가 후 열기
@@ -765,4 +764,5 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) pullIfStale();
   });
+  } // boot()
 })();

@@ -298,19 +298,6 @@
       findBtn.onclick = () => this._findNext();
       stage.appendChild(findBtn);
 
-      // 💡 보상형 광고 버튼: 광고 보면 남은 한 칸 자동 색칠(자발적 보상).
-      // 광고 사용 불가(웹/광고제거)면 숨김 → 웹 테스트 버전엔 안 보인다.
-      const hintBtn = document.createElement("button");
-      hintBtn.className = "c-hintbtn";
-      hintBtn.innerHTML = "💡";
-      hintBtn.title = "광고 보고 한 칸 칠하기";
-      hintBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-      hintBtn.onclick = () => this._rewardHint(hintBtn);
-      if (!(window.Ads && window.Ads.rewardedAvailable && window.Ads.rewardedAvailable()))
-        hintBtn.style.display = "none";
-      stage.appendChild(hintBtn);
-      this._hintBtn = hintBtn;
-
       this._findIdx = -1;
       this._armHint();
       this._updateNumsLOD(true);
@@ -403,53 +390,6 @@
       this._applyTransform();
       this._updateCulling(); // 목적지 조각이 바로 보이도록 즉시 컬링 갱신
       this._flash(i);
-    }
-
-    /* 💡 보상형 광고 → 시청 완료 시 남은 한 칸 자동 색칠 */
-    _rewardHint(btn) {
-      if (btn.disabled) return;
-      btn.disabled = true;
-      const done = () => { btn.disabled = false; };
-      if (window.Ads && window.Ads.rewarded) {
-        window.Ads
-          .rewarded()
-          .then((earned) => { if (earned) this.autoFillOne(); done(); })
-          .catch(done);
-      } else {
-        done();
-      }
-    }
-
-    /* 남은 조각 하나를 자동으로 칠한다(보상형 광고 보상). 없으면 false */
-    autoFillOne() {
-      const regs = this.art.regions;
-      // 우선 현재 선택색의 남은 조각, 없으면 아무 남은 조각
-      let target = -1;
-      for (let idx = 0; idx < regs.length; idx++) {
-        if (regs[idx].c === this.selected && !this.filled.has(idx)) { target = idx; break; }
-      }
-      if (target < 0) {
-        for (let idx = 0; idx < regs.length; idx++) {
-          if (!this.filled.has(idx)) { target = idx; this._select(regs[idx].c); break; }
-        }
-      }
-      if (target < 0) return false;
-      const i = target;
-      if (this.art.custom) {
-        this.brushMap[i] = this._brushKind();
-        saveBrushMap(this.art.id, this.brushMap);
-      }
-      this._paint(i, true);
-      this.filled.add(i);
-      saveProgress(this.art.id, [...this.filled]);
-      this._tick();
-      this._armHint();
-      this._findIdx = -1;
-      if (this._guideOn) this._updateGuide();
-      if (window.AppStats) window.AppStats.paint();
-      this._flash(i);
-      this._afterPaint(i);
-      return true;
     }
 
     /* 특정 조각 반짝임 */

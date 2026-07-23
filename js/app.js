@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v3.2"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v3.3"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -363,7 +363,7 @@
         noads.textContent = "광고 제거됨 ✓";
         noads.disabled = true;
       } else {
-        noads.textContent = "🚫 광고 제거";
+        noads.textContent = "🚫 광고 제거 · " + (window.Billing.priceLabel || "");
         noads.onclick = async () => {
           noads.disabled = true;
           const r = await Billing.buyRemoveAds();

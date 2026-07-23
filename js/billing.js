@@ -11,6 +11,9 @@
  */
 (function () {
   const PRODUCT_ID = "remove_ads"; // Play Console 인앱상품 ID
+  // 표시용 가격(폴백). 결제 플러그인 연결 후에는 Play에 등록된 실제 가격을
+  // 자동으로 가져와 표시하는 것이 정석 — 그때 이 값 대신 상품 가격을 쓴다.
+  const PRICE_LABEL = "₩3,900";
 
   function native() {
     const Cap = window.Capacitor;
@@ -29,6 +32,7 @@
 
   const Billing = {
     productId: PRODUCT_ID,
+    priceLabel: PRICE_LABEL,
     available() { return native(); },
     removed() { return !!(window.Ads && window.Ads.removed && window.Ads.removed()); },
 

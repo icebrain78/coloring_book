@@ -50,6 +50,19 @@ jobs:
         working-directory: android-app
         run: npx cap add android
 
+      - name: targetSdk/compileSdk 35 강제 (Play 신규앱 요건)
+        working-directory: android-app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "android/variables.gradle";
+            let s = fs.readFileSync(p, "utf8");
+            s = s.replace(/compileSdkVersion = \d+/, "compileSdkVersion = 35");
+            s = s.replace(/targetSdkVersion = \d+/, "targetSdkVersion = 35");
+            fs.writeFileSync(p, s);
+            console.log("SDK 35 설정 완료");
+          '
+
       - name: AndroidManifest 주입 (AdMob 앱 ID + 소셜 로그인 딥링크)
         working-directory: android-app
         run: |

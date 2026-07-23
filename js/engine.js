@@ -19,13 +19,22 @@
       return {};
     }
   }
+  let warnedSaveFail = false;
   function saveProgress(artId, filledIndices) {
     try {
       const all = loadAllProgress();
       all[artId] = filledIndices;
       localStorage.setItem(STORE_KEY, JSON.stringify(all));
     } catch (e) {
-      /* 저장소 사용 불가(사파리 비공개 모드 등) — 무시하고 계속 */
+      // 절대 조용히 넘기지 않는다 — 저장 실패는 진행이 날아간다는 뜻
+      if (!warnedSaveFail) {
+        warnedSaveFail = true;
+        if (window.AppToast) {
+          window.AppToast("⚠️ 저장 공간이 가득 차서 진행이 저장되지 않아요! 갤러리에서 안 쓰는 사진 도안을 삭제해주세요.");
+        } else {
+          alert("저장 공간이 가득 차서 진행이 저장되지 않아요! 갤러리에서 안 쓰는 사진 도안을 삭제해주세요.");
+        }
+      }
     }
     if (window.Cloud) window.Cloud.schedulePush(); // 로그인 상태면 클라우드에도
   }
@@ -45,7 +54,12 @@
       const all = JSON.parse(localStorage.getItem(BRUSH_KEY)) || {};
       all[artId] = map;
       localStorage.setItem(BRUSH_KEY, JSON.stringify(all));
-    } catch (e) {}
+    } catch (e) {
+      if (!warnedSaveFail && window.AppToast) {
+        warnedSaveFail = true;
+        window.AppToast("⚠️ 저장 공간이 가득 차서 브러시 기록이 저장되지 않아요!");
+      }
+    }
     if (window.Cloud) window.Cloud.schedulePush();
   }
 

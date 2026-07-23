@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.5"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -50,6 +50,29 @@
     },
   };
   window.AppStats = AppStats;
+
+  /* ── 화면 상단 토스트(저장 실패 등 중요 경고) ── */
+  window.AppToast = function (msg) {
+    let t = document.getElementById("app-toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "app-toast";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove("show"), 6000);
+  };
+
+  // 앱을 떠나는 순간(홈으로, 새로고침, 탭 전환) 대기 중인 클라우드
+  // 업로드를 즉시 실행 — 4초 디바운스 대기 중 이탈로 인한 유실 방지
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && Cloud.enabled && Cloud.user()) Cloud.pushNow();
+  });
+  window.addEventListener("pagehide", () => {
+    if (Cloud.enabled && Cloud.user()) Cloud.pushNow();
+  });
 
   /* ── 완성작 PNG 저장/공유 ── */
   function saveArtImage(art) {
@@ -312,13 +335,29 @@
 
     // 통계 줄
     const st = AppStats.load();
-    if (st.pieces > 0) {
+    // 저장 공간 사용량(localStorage ~5MB 기준 추정)
+    let usedKB = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        usedKB += ((localStorage.getItem(k) || "").length + k.length) / 512; // UTF-16 ≈ 2B/char
+      }
+    } catch (e) {}
+    const usedPct = Math.round((usedKB / 5120) * 100);
+    if (st.pieces > 0 || usedPct >= 70) {
       const stats = document.createElement("p");
       stats.className = "g-stats";
       const streak = AppStats.streak();
-      stats.textContent =
+      let line =
         "🧩 " + st.pieces.toLocaleString() + "칸 칠함 · 🖼 완성 " + st.completed + "개" +
         (streak > 1 ? " · 🔥 연속 " + streak + "일" : "");
+      if (usedPct >= 70) {
+        line += " · ⚠️ 저장공간 " + usedPct + "% — 안 쓰는 도안을 삭제해주세요";
+        stats.style.color = "#d64545";
+      } else {
+        line += " · 💾 " + usedPct + "%";
+      }
+      stats.textContent = line;
       header.appendChild(stats);
     }
     galleryEl.appendChild(header);

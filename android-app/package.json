@@ -4,6 +4,7 @@
   "private": true,
   "description": "물들임(컬러링) 웹앱을 감싸는 안드로이드 앱(Capacitor)",
   "dependencies": {
+    "@capacitor-community/admob": "^6.0.0",
     "@capacitor/app": "6.0.2",
     "@capacitor/core": "6.1.2"
   },

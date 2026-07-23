@@ -52,6 +52,24 @@ jobs:
         working-directory: android-app
         run: npx cap add android
 
+      - name: AdMob 앱 ID 주입 (AndroidManifest)
+        working-directory: android-app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "android/app/src/main/AndroidManifest.xml";
+            let s = fs.readFileSync(p, "utf8");
+            const appId = "ca-app-pub-7584566407757353~5974253070";
+            const meta = "    <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"" + appId + "\"/>\n";
+            if (!s.includes("com.google.android.gms.ads.APPLICATION_ID")) {
+              s = s.replace("</application>", meta + "    </application>");
+              fs.writeFileSync(p, s);
+              console.log("AdMob App ID 주입 완료");
+            } else {
+              console.log("이미 존재함");
+            }
+          '
+
       - name: 앱 아이콘/스플래시 생성 (실패해도 계속)
         working-directory: android-app
         run: npx @capacitor/assets generate --android || true

@@ -124,6 +124,16 @@ button:disabled { opacity: 0.55; }
 }
 .c-findbtn:active { transform: scale(0.94); }
 
+/* 💡 보상형 광고 버튼(찾기 버튼 바로 위) */
+.c-hintbtn {
+  position: absolute; right: 12px; bottom: 70px; z-index: 5;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--card); box-shadow: var(--shadow);
+  border: 1px solid var(--line); font-size: 20px;
+}
+.c-hintbtn:active { transform: scale(0.94); }
+.c-hintbtn:disabled { opacity: 0.5; }
+
 /* 힌트/찾기 반짝임 */
 .region.hintflash { animation: hintFlash 0.6s ease-in-out 3; }
 @keyframes hintFlash {

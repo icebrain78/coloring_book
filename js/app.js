@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.9"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v3.0"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -453,6 +453,7 @@
 
   /* ── 사진 변환 화면 ── */
   function showConverter() {
+    if (window.Ads) Ads.hideBanner();
     converterEl.innerHTML = "";
     let pickedImg = null;   // 로드된 Image
     let builtArt = null;    // 변환 결과 artwork
@@ -640,6 +641,7 @@
     canvasEl.classList.add("hidden");
     converterEl.classList.add("hidden");
     overlayEl.classList.add("hidden");
+    if (window.Ads) Ads.showGalleryBanner(); // 갤러리 하단 배너(앱에서만)
   }
   // 갤러리로 복귀: 쌓인 history가 있으면 back으로 소비(동기화 유지)
   function showGallery() {
@@ -648,6 +650,7 @@
   }
   function openArt(art) {
     if (!inSubScreen()) navPush(); // 갤러리에서 진입할 때만 한 단계 push
+    if (window.Ads) Ads.hideBanner(); // 색칠 중엔 광고 0
     galleryEl.classList.add("hidden");
     canvasEl.classList.remove("hidden");
     converterEl.classList.add("hidden");
@@ -698,7 +701,11 @@
     const galleryBtn = document.createElement("button");
     galleryBtn.className = "o-btn";
     galleryBtn.textContent = "갤러리로";
-    galleryBtn.onclick = showGallery;
+    galleryBtn.onclick = async () => {
+      // 완성 축하 뒤 자연스러운 끊김에서만 전면광고(3번에 1번, 앱에서만)
+      if (window.Ads) await Ads.maybeInterstitial();
+      showGallery();
+    };
     const againBtn = document.createElement("button");
     againBtn.className = "o-btn";
     againBtn.textContent = "다시 칠하기";
@@ -767,6 +774,13 @@
   AppDB.ready.then(boot);
   function boot() {
   showGallery();
+
+  // AdMob 초기화(앱에서만) → 준비되면 갤러리 배너 표시
+  if (window.Ads) {
+    Ads.init().then(() => {
+      if (!galleryEl.classList.contains("hidden")) Ads.showGalleryBanner();
+    });
+  }
 
   // 공유 링크(?share=...)로 들어온 경우: 도안 내려받아 갤러리에 추가 후 열기
   (function () {

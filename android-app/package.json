@@ -1,0 +1,12 @@
+{
+  "name": "coloring-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "컬러링 웹앱을 감싸는 안드로이드 앱(Capacitor)",
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/android": "6.1.2",
+    "@capacitor/cli": "6.1.2",
+    "@capacitor/core": "6.1.2"
+  }
+}

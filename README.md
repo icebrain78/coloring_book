@@ -147,19 +147,63 @@ create policy "owner can delete" on public.shared_art
 
 ---
 
-## 안드로이드 APK 만들기 (PWABuilder — 코딩 불필요)
+## 안드로이드 앱 만들기
 
-이 앱은 PWA라서 [PWABuilder](https://www.pwabuilder.com)에 주소만 넣으면
-설치형 안드로이드 앱(APK/AAB)이 나옵니다:
+두 가지 길이 있습니다. **A(권장)** 는 이 저장소에 이미 세팅돼 있어요.
 
-1. https://www.pwabuilder.com 접속
-2. 주소창에 `https://icebrain78.github.io/coloring_book/` 입력 → **Start**
-3. 점수 확인 후 **Package for Stores → Android**
-4. 옵션 기본값으로 **Download** → `.apk` 파일 생성
-5. APK를 폰에 옮겨 설치 (설정에서 "출처를 알 수 없는 앱 허용" 필요)
-   — Play 스토어에 올리려면 같은 화면의 `.aab` + 개발자 계정($25)을 사용
+### A. Capacitor + GitHub Actions (앱에 내장 · 오프라인 동작)
 
-앱 아이콘용 PNG(192/512)와 manifest는 이미 준비되어 있습니다.
+웹 자산을 앱 안에 담아 **인터넷 없이도 열리는 독립 앱**을 만듭니다.
+자세한 사용법은 [`android-app/README.md`](android-app/README.md):
+
+1. GitHub 저장소 → **Actions** → **"안드로이드 APK 빌드"** → **Run workflow**
+2. 5~10분 뒤 결과 페이지 하단 **Artifacts** 에서 APK 다운로드 → 폰에 설치
+
+### B. PWABuilder (라이브 사이트를 감싸는 방식 · 코딩 불필요)
+
+1. https://www.pwabuilder.com 에서 `https://icebrain78.github.io/coloring_book/` 입력
+2. **Package for Stores → Android** → Download
+
+---
+
+## 광고 붙이기 (수익화)
+
+> 이 앱은 "광고 없이" 시작했지만, 배포 후 수익화하려면 광고를 넣을 수 있어요.
+> 단, **직접 겪은 그 짜증나는 방식은 피하는 것**이 핵심입니다.
+
+### 어디에 넣나 — 앱(Capacitor)에만
+
+광고는 웹 PWA가 아니라 **네이티브 앱(A안 Capacitor)** 에 넣습니다.
+표준은 구글 **AdMob** + `@capacitor-community/admob` 플러그인.
+
+```bash
+cd android-app
+npm install @capacitor-community/admob
+npx cap sync android
+```
+
+### 광고 형식과 추천 배치 (덜 거슬리게)
+
+| 형식 | 설명 | 추천 |
+|------|------|------|
+| **보상형(Rewarded)** | 사용자가 **자발적으로** 광고 보고 보상(힌트·잠금 도안 해제) | ⭐ 최우선 — 강요 아님 |
+| **전면(Interstitial)** | 화면 전환 시 전체 광고 | 도안 **완성 후**에만, 3~4회에 1번 |
+| **배너(Banner)** | 하단 고정 띠 | 갤러리 화면 하단만. **색칠 중엔 절대 금지** |
+
+### UX 3원칙 (내가 싫어했던 앱처럼 되지 않기)
+
+1. **색칠하는 동안엔 광고 0** — 몰입을 깨지 않는다
+2. 전면광고는 **완성 축하 뒤** 같은 자연스러운 끊김에서만
+3. **"광고 제거" 인앱결제**(1회 구매)를 꼭 같이 제공 — 원하는 사람은 돈 내고 무광고
+
+### 대안(광고 없이 벌기)
+
+- **무광고 + "개발자 응원" 후원 결제**(소액)
+- 프리미엄 **도안 팩** 판매
+- 처음엔 광고 없이 사용자부터 모으고, 나중에 보상형만 얹기
+
+> 상세 코드(AdMob 앱 ID 발급 → 초기화 → 완성 후 전면광고 호출)를 원하면
+> 말해주세요. 위 3원칙에 맞춰 붙여 드릴게요.
 
 ---
 

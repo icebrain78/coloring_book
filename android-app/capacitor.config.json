@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.icebrain78.coloring",
+  "appName": "컬러링",
+  "webDir": "www",
+  "backgroundColor": "#6c5ce7",
+  "android": {
+    "backgroundColor": "#6c5ce7"
+  }
+}

@@ -1,0 +1,5 @@
+# Capacitor 빌드 산출물(워크플로우가 매번 새로 생성)
+node_modules/
+www/
+android/
+package-lock.json

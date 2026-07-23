@@ -4,7 +4,7 @@
  * 오프라인일 때만 캐시로 동작한다. (캐시 우선 방식은 업데이트가
  * 폰에 전달되지 않는 문제가 있어 v3부터 네트워크 우선으로 변경)
  */
-const CACHE = "coloring-v11";
+const CACHE = "coloring-v12";
 const ASSETS = [
   "./",
   "./index.html",

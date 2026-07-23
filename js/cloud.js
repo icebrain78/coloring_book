@@ -97,10 +97,13 @@ window.Cloud = (function () {
      웹: authorize로 이동 → 돌아오면 URL #해시에 토큰 → checkOAuthRedirect가 처리
      앱: 시스템 브라우저로 열고 커스텀 스킴 딥링크로 토큰 수신 */
   function oauthUrl(provider, redirectTo) {
-    return (
+    let u =
       CFG.url + "/auth/v1/authorize?provider=" + encodeURIComponent(provider) +
-      "&redirect_to=" + encodeURIComponent(redirectTo)
-    );
+      "&redirect_to=" + encodeURIComponent(redirectTo);
+    // 카카오: 개인(비즈 아님) 앱은 이메일 동의항목을 못 켬(account_email → KOE205).
+    // 닉네임만 요청해서 개인 앱에서도 로그인되게 한다.
+    if (provider === "kakao") u += "&scopes=profile_nickname";
+    return u;
   }
 
   async function completeOAuth(params) {

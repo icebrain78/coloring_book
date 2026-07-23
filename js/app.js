@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v3.3"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v3.4"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -322,7 +322,7 @@
       if (u) {
         const who = document.createElement("span");
         who.className = "g-account-who";
-        who.textContent = "☁️ " + u.email;
+        who.textContent = "☁️ " + (u.email || "로그인됨"); // 카카오는 이메일 없을 수 있음
         const sync = document.createElement("span");
         sync.className = "g-sync";
         sync.id = "g-sync";

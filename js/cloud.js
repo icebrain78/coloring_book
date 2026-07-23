@@ -140,23 +140,20 @@ window.Cloud = (function () {
     }
   }
 
-  async function oauth(provider) {
-    if (!enabled) throw new Error("클라우드가 설정되지 않았어요");
+  const NATIVE_REDIRECT = "io.github.icebrain78.coloring://login-callback";
+
+  function isNative() {
     const Cap = window.Capacitor;
-    const native = Cap && typeof Cap.isNativePlatform === "function" && Cap.isNativePlatform();
-    if (native) return oauthNative(provider);
-    // 웹: 현재 페이지로 되돌아오게 하고 이동(반환 없음 — 페이지 전환됨)
-    location.href = oauthUrl(provider, location.origin + location.pathname);
-    return new Promise(() => {});
+    return !!(Cap && typeof Cap.isNativePlatform === "function" && Cap.isNativePlatform());
   }
 
-  // 앱(Capacitor): 시스템 브라우저 + 커스텀 스킴 딥링크로 토큰 회수
-  async function oauthNative(provider) {
+  // 앱(Capacitor): 주어진 로그인 URL을 시스템 브라우저로 열고,
+  // 커스텀 스킴 딥링크(#access_token=...)로 돌아오면 세션을 확립한다.
+  function openAndAwaitSession(url) {
     const Cap = window.Capacitor;
     const Browser = Cap.Plugins && Cap.Plugins.Browser;
     const App = Cap.Plugins && Cap.Plugins.App;
     if (!Browser || !App) throw new Error("브라우저 플러그인이 없어요");
-    const redirectTo = "io.github.icebrain78.coloring://login-callback";
     return new Promise((resolve, reject) => {
       let handle = null;
       const finish = (fn, arg) => {
@@ -165,17 +162,46 @@ window.Cloud = (function () {
         fn(arg);
       };
       App.addListener("appUrlOpen", async (data) => {
-        const url = (data && data.url) || "";
-        if (url.indexOf("login-callback") < 0) return;
-        const hi = url.indexOf("#");
+        const u = (data && data.url) || "";
+        if (u.indexOf("login-callback") < 0) return;
+        const hi = u.indexOf("#");
         if (hi < 0) { finish(reject, new Error("로그인 응답이 올바르지 않아요")); return; }
         try {
-          const ok = await completeOAuth(new URLSearchParams(url.substring(hi + 1)));
+          const ok = await completeOAuth(new URLSearchParams(u.substring(hi + 1)));
           finish(resolve, ok);
         } catch (e) { finish(reject, e); }
       }).then((h) => { handle = h; });
-      Browser.open({ url: oauthUrl(provider, redirectTo) }).catch((e) => finish(reject, e));
+      Browser.open({ url }).catch((e) => finish(reject, e));
     });
+  }
+
+  // 구글/카카오 (Supabase 기본 제공)
+  async function oauth(provider) {
+    if (!enabled) throw new Error("클라우드가 설정되지 않았어요");
+    if (isNative()) return openAndAwaitSession(oauthUrl(provider, NATIVE_REDIRECT));
+    location.href = oauthUrl(provider, location.origin + location.pathname);
+    return new Promise(() => {}); // 페이지 전환됨
+  }
+
+  /* ── 네이버 (Supabase 미지원 → Edge Function 경유) ──
+     네이버 authorize → Edge Function(naver-callback)이 프로필 조회 후
+     Supabase 매직링크를 발급 → 그 링크가 앱으로 #access_token=... 를 실어 복귀 */
+  function naverAuthUrl(finalRedirect) {
+    const edgeFn = CFG.url + "/functions/v1/naver-callback";
+    return (
+      "https://nid.naver.com/oauth2.0/authorize?response_type=code" +
+      "&client_id=" + encodeURIComponent(CFG.naverClientId || "") +
+      "&redirect_uri=" + encodeURIComponent(edgeFn) +
+      "&state=" + encodeURIComponent(finalRedirect)
+    );
+  }
+
+  async function oauthNaver() {
+    if (!enabled) throw new Error("클라우드가 설정되지 않았어요");
+    if (!CFG.naverClientId) throw new Error("네이버 설정이 아직 없어요(관리자 설정 필요)");
+    if (isNative()) return openAndAwaitSession(naverAuthUrl(NATIVE_REDIRECT));
+    location.href = naverAuthUrl(location.origin + location.pathname);
+    return new Promise(() => {});
   }
 
   async function ensureToken() {
@@ -362,7 +388,7 @@ window.Cloud = (function () {
     state: () => lastState,
     onStatus: (cb) => { statusCb = cb; },
     signup, login, logout,
-    oauth, checkOAuthRedirect,
+    oauth, oauthNaver, checkOAuthRedirect,
     init, pullMerge, schedulePush, pushNow,
     shareArt, fetchShared,
     mergeData, localData, writeLocal, // 백업 가져오기에서도 재사용

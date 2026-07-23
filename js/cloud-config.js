@@ -12,4 +12,7 @@
 window.CLOUD_CONFIG = {
   url: "https://ifjikwpmyfvzwetppnfx.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlmamlrd3BteWZ2endldHBwbmZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTg2MDYsImV4cCI6MjEwMDI3NDYwNn0._p1Bq0P7sG9H929OpC29beOZ2XymHsF5SJyYC6Tb3hw",
+  // 네이버 로그인용 Client ID (공개돼도 됨). 네이버 개발자센터에서 발급 후 넣기.
+  // 비워두면 "네이버로 계속하기" 버튼이 숨겨짐.
+  naverClientId: "",
 };

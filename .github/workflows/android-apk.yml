@@ -40,6 +40,7 @@ jobs:
             --exclude '.git' \
             --exclude '.github' \
             --exclude 'docs' \
+            --exclude 'supabase' \
             --exclude 'README.md' \
             ./ android-app/www/
           echo "복사된 파일:"; ls android-app/www

@@ -92,6 +92,8 @@ button:disabled { opacity: 0.55; }
 .auth-social.google { background: #fff; color: #3c4043; border-color: #dadce0; }
 .auth-social.google .auth-social-ic { color: #4285f4; }
 .auth-social.kakao { background: #fee500; color: #191600; border-color: #fee500; }
+.auth-social.naver { background: #03c75a; color: #ffffff; border-color: #03c75a; }
+.auth-social.naver .auth-social-ic { color: #ffffff; font-weight: 900; }
 
 .g-grid {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;

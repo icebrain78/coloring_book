@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v3.5"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v3.6"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -185,6 +185,8 @@
       '<span class="auth-social-ic">G</span> 구글로 계속하기</button>' +
       '<button type="button" class="auth-social kakao" id="auth-kakao">' +
       '<span class="auth-social-ic">💬</span> 카카오로 계속하기</button>' +
+      '<button type="button" class="auth-social naver" id="auth-naver">' +
+      '<span class="auth-social-ic">N</span> 네이버로 계속하기</button>' +
       '<button type="button" class="auth-close" id="auth-close">닫기</button>' +
       "</form>";
     document.body.appendChild(el);
@@ -253,6 +255,23 @@
     };
     el.querySelector("#auth-google").onclick = function () { social("google", this); };
     el.querySelector("#auth-kakao").onclick = function () { social("kakao", this); };
+
+    // 네이버: 설정(naverClientId)이 있을 때만 노출
+    const naverBtn = el.querySelector("#auth-naver");
+    if (window.CLOUD_CONFIG && CLOUD_CONFIG.naverClientId) {
+      naverBtn.onclick = function () {
+        if (running) return;
+        msg.className = "auth-msg";
+        msg.textContent = "네이버 로그인 창을 여는 중…";
+        naverBtn.disabled = true;
+        Cloud.oauthNaver().catch((e) => {
+          msg.textContent = (e && e.message) || "네이버 로그인 실패";
+          naverBtn.disabled = false;
+        });
+      };
+    } else {
+      naverBtn.style.display = "none";
+    }
 
     el.querySelector("#auth-close").onclick = () => history.back();
   }

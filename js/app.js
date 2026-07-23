@@ -4,7 +4,7 @@
  */
 (function () {
   const SVGNS = "http://www.w3.org/2000/svg";
-  const APP_VERSION = "v2.7"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
+  const APP_VERSION = "v2.8"; // 갤러리에 표시 — 폰이 최신 코드인지 확인용
   const CUSTOM_KEY = "coloring:custom:v1";
   const galleryEl = document.getElementById("gallery");
   const canvasEl = document.getElementById("canvas");
@@ -167,7 +167,7 @@
   /* ── 로그인/회원가입 화면 ── */
   function showAuth() {
     let el = document.getElementById("auth");
-    if (el) { el.classList.remove("hidden"); return; }
+    if (el) { el.classList.remove("hidden"); navPush(); return; }
     el = document.createElement("div");
     el.id = "auth";
     el.className = "auth-overlay";
@@ -183,6 +183,7 @@
       '<button type="button" class="auth-close" id="auth-close">닫기</button>' +
       "</form>";
     document.body.appendChild(el);
+    navPush(); // 뒤로가기 한 단계 = 로그인창 닫기
     const msg = el.querySelector("#auth-msg");
     const loginBtn = el.querySelector("#auth-login");
     const signupBtn = el.querySelector("#auth-signup");
@@ -205,8 +206,8 @@
           msg.className = "auth-msg ok";
           msg.textContent = "가입 완료! 이메일의 확인 링크를 누른 뒤 로그인해주세요.";
         } else {
-          el.classList.add("hidden");
-          showGallery();
+          showGalleryRaw();   // 뒤 갤러리 갱신(로그인 상태 반영)
+          history.back();      // 로그인창 닫기 + pushed state 소비
           if (okText) alert(okText);
         }
       } catch (e) {
@@ -228,7 +229,7 @@
     };
     signupBtn.onclick = () =>
       run(Cloud.signup, signupBtn, "가입 중…", "가입 완료! 동기화가 켜졌어요 ☁️");
-    el.querySelector("#auth-close").onclick = () => el.classList.add("hidden");
+    el.querySelector("#auth-close").onclick = () => history.back();
   }
 
   /* ── 갤러리 썸네일용 미니 SVG ── */
@@ -564,6 +565,7 @@
       openArt(builtArt);
     };
 
+    if (!inSubScreen()) navPush(); // 갤러리에서 진입할 때만 한 단계 push
     converterEl.classList.remove("hidden");
     galleryEl.classList.add("hidden");
     canvasEl.classList.add("hidden");
@@ -596,15 +598,56 @@
     return { el: wrap, value: () => current };
   }
 
+  /* ── 뒤로가기 처리 (안드로이드 하드웨어 back + 브라우저 back) ──
+     화면에 진입할 때 history state를 쌓아, 뒤로가기가 오버레이 → 색칠/변환
+     화면 → 갤러리 순으로 닫히게 하고, 갤러리(루트)에서만 앱을 나가게 한다. */
+  let navPushed = 0;
+  function navPush() { navPushed++; history.pushState({ nav: navPushed }, ""); }
+  function inSubScreen() {
+    return !canvasEl.classList.contains("hidden") || !converterEl.classList.contains("hidden");
+  }
+  window.addEventListener("popstate", () => {
+    if (navPushed > 0) navPushed--;
+    // 위에서부터 열려있는 것을 하나 닫는다
+    const auth = document.getElementById("auth");
+    if (auth && !auth.classList.contains("hidden")) { auth.classList.add("hidden"); return; }
+    if (!overlayEl.classList.contains("hidden")) { showGalleryRaw(); return; }
+    if (inSubScreen()) { showGalleryRaw(); return; }
+    // 갤러리(루트) — 더 닫을 것 없음. 웹뷰 기본 동작(앱 종료)에 맡긴다.
+  });
+
+  // Capacitor 앱: 네이티브 하드웨어 뒤로가기 → 웹 히스토리와 연결
+  // (닫을 화면/오버레이가 있으면 그것부터, 갤러리 루트면 앱 종료)
+  (function () {
+    const Cap = window.Capacitor;
+    const App = Cap && Cap.Plugins && Cap.Plugins.App;
+    if (!App || !App.addListener) return;
+    App.addListener("backButton", () => {
+      const auth = document.getElementById("auth");
+      const authOpen = auth && !auth.classList.contains("hidden");
+      if (navPushed > 0 || authOpen || !overlayEl.classList.contains("hidden") || inSubScreen()) {
+        history.back();
+      } else {
+        App.exitApp();
+      }
+    });
+  })();
+
   /* ── 화면 전환 ── */
-  function showGallery() {
+  function showGalleryRaw() {
     renderGallery();
     galleryEl.classList.remove("hidden");
     canvasEl.classList.add("hidden");
     converterEl.classList.add("hidden");
     overlayEl.classList.add("hidden");
   }
+  // 갤러리로 복귀: 쌓인 history가 있으면 back으로 소비(동기화 유지)
+  function showGallery() {
+    if (navPushed > 0) history.back();
+    else showGalleryRaw();
+  }
   function openArt(art) {
+    if (!inSubScreen()) navPush(); // 갤러리에서 진입할 때만 한 단계 push
     galleryEl.classList.add("hidden");
     canvasEl.classList.remove("hidden");
     converterEl.classList.add("hidden");

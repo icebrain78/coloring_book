@@ -145,33 +145,19 @@ create policy "owner can delete" on public.shared_art
 공유 링크(`...?share=도안id`)를 받은 사람은 로그인 없이도 도안을 받아
 자기 갤러리에서 색칠할 수 있습니다.
 
-### 소셜 로그인 (구글 · 카카오) 설정
+### 소셜 로그인 (구글 · 카카오 · 네이버) 설정
 
-로그인 창에 **"구글로 계속하기 / 카카오로 계속하기"** 버튼이 이미 있습니다.
-다만 아래 설정을 마쳐야 실제로 로그인됩니다(안 하면 버튼 눌렀을 때 오류).
+로그인 창에 **구글 / 카카오 / 네이버** 버튼이 있습니다. 각 제공자 콘솔 설정을
+마쳐야 실제로 로그인됩니다. **단계별 전체 가이드(실제 겪은 함정 포함)**:
 
-**공통(먼저):** Supabase → **Authentication → URL Configuration → Redirect URLs** 에
-아래 두 개를 추가:
+👉 **[docs/소셜로그인-설정.md](docs/소셜로그인-설정.md)**
 
-```
-https://icebrain78.github.io/coloring_book/     ← 웹
-io.github.icebrain78.coloring://login-callback  ← 안드로이드 앱(딥링크)
-```
-
-**① 구글**
-1. [Google Cloud Console](https://console.cloud.google.com) → **API·서비스 → OAuth 동의 화면** 설정
-2. **사용자 인증 정보 → OAuth 클라이언트 ID(웹)** 생성
-   - 승인된 리디렉션 URI: `https://ifjikwpmyfvzwetppnfx.supabase.co/auth/v1/callback`
-3. 발급된 **클라이언트 ID / 시크릿** 을 Supabase → **Authentication → Providers → Google** 에 붙여넣고 **Enable**
-
-**② 카카오**
-1. [Kakao Developers](https://developers.kakao.com) → **내 애플리케이션** 생성
-2. **카카오 로그인** 활성화 → **Redirect URI** 에
-   `https://ifjikwpmyfvzwetppnfx.supabase.co/auth/v1/callback` 등록
-3. **REST API 키 / (보안) Client Secret** 을 Supabase → **Providers → Kakao** 에 넣고 **Enable**
-
-> 네이버는 Supabase 기본 제공 목록에 없어 별도 서버(Edge Function) 작업이 필요합니다.
-> 원하면 나중에 붙여 드릴게요. 지금은 구글·카카오 + 이메일 로그인이 동작합니다.
+요약:
+- **구글·카카오**: Supabase 기본 제공 — 각 콘솔에서 키 발급 → Supabase Providers에 등록
+- **네이버**: Supabase 미지원 → Edge Function(`supabase/functions/naver-callback/`) 배포 필요
+- 콜백 주소: `https://ifjikwpmyfvzwetppnfx.supabase.co/auth/v1/callback`
+  (네이버는 `/functions/v1/naver-callback`)
+- **Secret 류는 저장소에 커밋 금지** — Supabase Providers / Edge Function Secret에만 저장
 
 ---
 
